@@ -1,0 +1,8 @@
+{
+  "name": "Rahul weds Radhika",
+  "description": "A modern, bilingual Haryanvi wedding site optimized for mobile performance, seamless navigation, and elegant, minimalist cultural design.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

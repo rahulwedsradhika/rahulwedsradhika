@@ -1,0 +1,135 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Light-Pink Wedding Aesthetic Palette */
+  --color-pink-main: #FFF4F6;
+  --color-pink-sub: #F8E3E9;
+  --color-card: #FFFFFF;
+  --color-rose: #C76B84;
+  --color-burgundy: #702C43;
+  --color-gold: #D6AD62;
+  --color-gold-dark: #B58A38;
+  --color-gold-light: #F4E5BD;
+  --color-border-pink: #EBD9DE;
+  --color-text-primary: #33252B;
+  --color-text-secondary: #765F68;
+
+  /* Aliases for seamless component compatibility */
+  --color-cream: #FFF4F6;
+  --color-cream-dark: #F8E3E9;
+  --color-mustard: #D6AD62;
+  --color-mustard-soft: #F4E5BD;
+  --color-wheat: #702C43;
+  --color-wheat-soft: #F8E3E9;
+  --color-terracotta: #C76B84;
+  --color-charcoal: #33252B;
+
+  /* Fonts */
+  --font-en-heading: "Fraunces", Georgia, serif;
+  --font-en-body: "Inter", system-ui, -apple-system, sans-serif;
+  --font-hi-heading: "Noto Serif Devanagari", Georgia, serif;
+  --font-hi-body: "Hind", system-ui, -apple-system, sans-serif;
+
+  --shadow-soft: 0 12px 32px -10px rgba(112, 44, 67, 0.12);
+  --shadow-rose: 0 10px 30px -8px rgba(112, 44, 67, 0.10);
+}
+
+:root {
+  --main-bg: #FFF4F6;
+  --secondary-bg: #F8E3E9;
+  --card-bg: #FFFFFF;
+  --accent-pink: #C76B84;
+  --burgundy: #702C43;
+  --gold: #D6AD62;
+  --text-primary: #33252B;
+  --text-secondary: #765F68;
+  --border: #EBD9DE;
+
+  --cream: #FFF4F6;
+  --cream-dark: #F8E3E9;
+  --mustard: #D6AD62;
+  --mustard-soft: #F4E5BD;
+  --wheat: #702C43;
+  --wheat-soft: #F8E3E9;
+  --terracotta: #C76B84;
+  --charcoal: #33252B;
+
+  --font-heading: var(--font-en-heading);
+  --font-body: var(--font-en-body);
+}
+
+html {
+  scroll-behavior: smooth;
+  background-color: var(--main-bg);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+html[lang="hi"] {
+  --font-heading: var(--font-hi-heading);
+  --font-body: var(--font-hi-body);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  background-color: var(--main-bg);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  line-height: 1.65;
+  overflow-x: hidden;
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.font-heading {
+  font-family: var(--font-heading);
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+.hero-names {
+  font-family: var(--font-heading);
+  font-size: clamp(2.35rem, 7.5vw, 5.25rem);
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+.section-heading {
+  font-family: var(--font-heading);
+  font-size: clamp(1.65rem, 3.8vw, 2.75rem);
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+.card-heading {
+  font-family: var(--font-heading);
+  font-size: clamp(1.15rem, 2.2vw, 1.5rem);
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #FFF4F6;
+}
+::-webkit-scrollbar-thumb {
+  background: #EBD9DE;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #C76B84;
+}

@@ -1,0 +1,17 @@
+{
+  "name": "Rahul weds Radhika · राहुल और राधिका",
+  "short_name": "R & R Wedding",
+  "description": "Bilingual Modern Haryanvi wedding invitation website for Rahul & Radhika with schedule, venue directions, and RSVP.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FBF6EA",
+  "theme_color": "#FBF6EA",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

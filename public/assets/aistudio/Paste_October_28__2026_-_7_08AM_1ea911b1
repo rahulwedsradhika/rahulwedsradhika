@@ -1,0 +1,680 @@
+# Rahul weds Radhika: Wedding Website Master Prompt Document
+
+**Stack:** React + Tailwind (Google AI Studio, Gemini) · Supabase (Postgres, Storage, RLS) · Google Maps
+**Style:** "Modern Haryanvi": clean, airy, contemporary, with Haryana shown through small, tasteful touches
+**Languages:** English + हिन्दी (full toggle)
+**Footer signature:** Made with ❤️ by Rohit
+
+---
+
+## HOW TO USE THIS DOCUMENT
+
+1. Do the phases **in order**. Paste one phase at a time into AI Studio and confirm it works before moving on.
+2. **Phase 0 (Master Context)** goes in first, and again whenever Gemini "forgets" the style. Re-paste it with the line: *"Remember this context for everything that follows."*
+3. Fill in the **Fill-Me-In sheet** below before Phase 1. Anything unknown stays as a placeholder in one config file.
+4. After each phase, test on a **real phone** (Chrome and Safari) with a slow network (DevTools → Slow 4G).
+5. If Gemini breaks something that worked, say: *"Revert only the last change. Do not touch anything else."*
+6. Hindi text should be checked by an elder in the family before launch.
+
+### Fill-Me-In sheet (update as you learn things)
+
+| Item | Value |
+|---|---|
+| Groom | Rahul / राहुल |
+| Bride | Radhika / राधिका |
+| Monogram | R & R |
+| Wedding date | [DATE] |
+| Events | [LIST, e.g. Mehendi, Haldi, Sangeet, Baraat, Pheras, Reception] |
+| Venue(s) | [VILLAGE, HARYANA] |
+| Site builder | Rohit |
+| Primary contact numbers | [3 to 5 people: name, role, phone, languages] |
+| Domain (optional) | [rahulweddsradhika.in or similar] |
+
+---
+
+# PHASE 0: MASTER CONTEXT (paste first, always)
+
+```
+You are a senior front-end engineer and visual designer. We are building a
+mobile-first, bilingual (English / Hindi) wedding website for
+"Rahul weds Radhika" (राहुल और राधिका), a Haryanvi family wedding.
+
+TECH
+- React + Vite + TypeScript, Tailwind CSS, Framer Motion for animation.
+- Supabase (@supabase/supabase-js) for backend. Never use or expose a
+  service_role key in client code. Use only the public anon key, read from
+  environment variables (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY).
+- Keep the bundle light. Most guests open this from WhatsApp on mid-range
+  Android phones with weak village networks.
+
+DESIGN DIRECTION: "MODERN HARYANVI"
+- Clean, airy, contemporary. Lots of whitespace, large type, soft rounded
+  cards (radius 20-28px), smooth scrolling. NOT rustic, NOT ancient, NOT
+  cluttered. Think "a stylish modern brand proud of where it comes from".
+- Haryana appears only as small touches: a minimal line-art sun over fields,
+  a safa (turban), a dhol, a matka, a thin phulkari-inspired border or subtle
+  geometric pattern used as dividers and card edges. Never full scenes.
+- Haryanvi flavour lives in the WORDS: "राम राम!", "आइयो ज़रूर!", etc.
+
+PALETTE (define as CSS variables / Tailwind theme tokens)
+- cream    #FBF6EA  (page background)
+- mustard  #E0A526  (primary accent, buttons)
+- wheat    #5C7A3A  (secondary, deep green)
+- terracotta #C8643C (tiny accents only: hearts, highlights, error-soft)
+- charcoal #2B2B2B  (all body text, keep contrast crisp)
+- Add tints: cream-dark #F3EAD3, mustard-soft #F6E3B0, wheat-soft #DDE6CF.
+
+TYPOGRAPHY
+- English headings: Fraunces. English body: Inter.
+- Hindi headings: Noto Serif Devanagari. Hindi body: Hind.
+- Load fonts with display=swap and only the weights used (400, 500, 600, 700).
+- Type scale: fluid with clamp(). Hero names are very large.
+
+BILINGUAL ARCHITECTURE (critical)
+- ALL visible text lives in ONE file: src/i18n/translations.ts as
+  { en: {...}, hi: {...} } with identical keys.
+- A LanguageContext provides lang, setLang, and t('key').
+- Language is saved to localStorage ('wedding_lang') and applied to <html lang>.
+- Switching language never reloads the page. A small EN | हिं toggle is
+  visible in the top corner after the entry screen.
+- Apply the correct font family automatically depending on lang.
+
+CONFIG (critical)
+- ALL wedding facts live in ONE file: src/config/wedding.ts: names, date
+  (ISO with timezone Asia/Kolkata), events array, venues array (name, address,
+  landmark, lat, lng, plusCode, mapsUrl), contact numbers, WhatsApp share text,
+  site URL, couple monogram. Placeholders like [DATE] and [VILLAGE, HARYANA]
+  must be easy to find and replace here and nowhere else.
+
+PERFORMANCE & QUALITY RULES
+- Mobile-first (design at 360px width first), then tablet/desktop.
+- Images: WebP/AVIF, lazy-loaded, explicit width/height. Target total initial
+  load under 1.5 MB. Audio files short and compressed (mp3/ogg, < 400 KB each).
+- Respect prefers-reduced-motion: disable particles, parallax and confetti.
+- Accessible: semantic HTML, alt text, focus states, buttons >= 44px tall,
+  contrast AA, aria-labels on icon buttons.
+- No console errors. No unused dependencies. Comment non-obvious code.
+- Smooth scroll, fade-in-on-scroll for sections (IntersectionObserver or
+  Framer Motion whileInView, once only).
+
+DO / DON'T
+- DO keep components small and in their own files.
+- DO use the palette tokens, never hard-coded random colors.
+- DON'T add features I did not ask for in the current phase.
+- DON'T rewrite files that are unrelated to the current phase.
+- When unsure, ask me ONE short question instead of guessing.
+
+Acknowledge with a 5-line summary of the architecture you will use, then wait
+for Phase 1.
+```
+
+---
+
+# PHASE 1: FOUNDATION (project skeleton, theme, i18n, config)
+
+```
+PHASE 1: FOUNDATION. Do only this phase.
+
+1. Create the folder structure:
+   src/
+     components/ (ui/, sections/, layout/)
+     config/wedding.ts
+     i18n/translations.ts, LanguageContext.tsx
+     hooks/ (useCountdown, useScrollReveal, useAudio)
+     lib/ (supabaseClient.ts, ics.ts, share.ts, cardGenerator.ts)
+     assets/ (illustrations/, audio/, images/)
+     styles/ (index.css with CSS variables + font imports)
+
+2. Tailwind theme: add the palette tokens, font families (heading-en,
+   body-en, heading-hi, body-hi), border radius scale, and soft shadow
+   tokens (shadow-soft: 0 10px 30px -12px rgba(43,43,43,0.18)).
+
+3. Build reusable UI primitives:
+   - <Button variant="primary|secondary|ghost" size="md|lg"> rounded-full,
+     mustard primary, subtle press animation (scale 0.97).
+   - <Card> soft rounded card with optional phulkari edge.
+   - <SectionTitle eyebrow title subtitle> centred, with a small mustard
+     rule under it.
+   - <PhulkariDivider> thin repeating geometric SVG border, two-colour
+     (mustard + wheat), width 100%, height 12px, used between sections.
+   - <Reveal> wrapper for fade-up on scroll.
+
+4. src/config/wedding.ts with typed placeholder data:
+   names {groom:{en:'Rahul',hi:'राहुल'}, bride:{en:'Radhika',hi:'राधिका'}},
+   weddingDate '[DATE]' (and a parsed ISO field commented as TODO),
+   events: [] (typed, empty for now), venues: [] (typed, empty for now),
+   contacts: [] (will come from Supabase later, fallback here),
+   siteUrl, whatsappShareText {en, hi}.
+
+5. translations.ts with starter keys for: entry, hero, nav, footer, common
+   (loading, error, retry, close, copy, copied). Hindi must be natural
+   Hindi (not literal machine translation).
+
+6. A basic App.tsx that renders a placeholder page proving fonts, colors,
+   language toggle and Reveal animation all work.
+
+Output a short checklist of what I should see on screen to confirm it works.
+```
+
+**Check before moving on:** the toggle flips fonts, the colors match the palette, and there are no console errors.
+
+---
+
+# PHASE 2: ENTRY SCREEN, HERO, SOUND
+
+```
+PHASE 2: ENTRY SCREEN + HERO + SOUND. Do only this phase.
+
+A. ENTRY SCREEN (full-screen overlay, shown once per visit)
+- Background: soft sunrise gradient cream -> mustard-soft -> a faint
+  warm glow near the bottom. Slowly floating soft particles (12-20 small
+  circles/dust motes, low opacity, CSS or Framer Motion). Disabled for
+  reduced-motion.
+- Centre: "R & R" monogram inside a thin circle (SVG, mustard stroke,
+  Fraunces lettering). The circle draws itself on load (stroke-dashoffset).
+- Below: "राम राम!" in large Noto Serif Devanagari, then in small text
+  "Choose your language / भाषा चुनें".
+- Two large rounded buttons side by side (stack on very small screens):
+  "English" and "हिन्दी".
+- Small hint text below: "Tap to enter / प्रवेश के लिए चुनें".
+- On tap: save language, unlock audio (create/resume AudioContext inside the
+  click handler), play a short dhol hit (assets/audio/dhol-hit.mp3), then
+  fade the overlay out (600ms) into the hero. If the user returns later in
+  the same session, skip the entry screen. On a new visit show it again.
+- Handle autoplay policies: NEVER try to play audio before the tap.
+
+B. HERO
+- Full-viewport section, cream background, subtle sunrise gradient at top.
+- Top: small eyebrow text "We are getting married / हम विवाह के बंधन में बंध रहे हैं".
+- Names animate in letter-by-letter or line-by-line (stagger):
+  "Rahul & Radhika" / "राहुल और राधिका" in huge heading type, with the
+  ampersand in terracotta.
+- Under names: date ([DATE]) and venue ([VILLAGE, HARYANA]) pulled from
+  config, with small icons.
+- Blessing line (Hindi under both languages, italic): "आप सबके आशीर्वाद के साथ"
+  (and English: "With all your blessings").
+- Illustration: minimal one-colour line-art SVG of a sun rising over wheat
+  fields, placed subtly behind/under the names at low opacity. Hand-write
+  the SVG, keep under 4 KB.
+- Thin phulkari border framing the hero edges (top and bottom only).
+- Scroll-down hint: small animated chevron with "Scroll / नीचे देखें".
+- Primary CTA button "RSVP / आइयो ज़रूर!" that scrolls to #rsvp (the section
+  will exist later; make it safe if it doesn't exist yet).
+
+C. SOUND SYSTEM
+- useAudio hook managing: background track (assets/audio/bg-fusion.mp3,
+  loop, volume 0.25 with fade-in/out over 1.5s), and sfx (tap, dhol-hit).
+- Floating mute/unmute button, fixed bottom-left, always visible, 48px round,
+  cream with mustard border, clear speaker icon states, aria-label bilingual.
+- State persisted in localStorage ('wedding_muted'). Respect it on every visit.
+- Pause music when the tab is hidden (visibilitychange) and resume after.
+- Use placeholder audio files with clear TODO comments telling me where to
+  drop the final files. Do not fetch audio from external URLs.
+
+D. EASTER EGG (small, optional but include)
+- A small dhol icon in the hero corner. Tapping it plays a dhol roll and
+  makes it wiggle. Max one sound at a time.
+
+Provide the Hindi strings you used so I can have them verified.
+```
+
+---
+
+# PHASE 3: COUNTDOWN + COUPLE'S STORY
+
+```
+PHASE 3: COUNTDOWN + STORY. Do only this phase.
+
+A. COUNTDOWN (#countdown)
+- Four rounded tiles: Days / Hours / Minutes / Seconds (दिन / घंटे / मिनट / सेकंड),
+  numbers in Fraunces, flip or soft tick animation when digits change.
+- Reads the date from config. Timezone Asia/Kolkata. If [DATE] is still a
+  placeholder, show a friendly "Date coming soon" state without crashing.
+- After the date passes, switch to "We are married! / हमारा विवाह हो गया!"
+  Update every second with a hook (useCountdown) that cleans up timers.
+- Pause updates when the tab is hidden to save battery.
+
+B. COUPLE'S STORY (#story)
+- 3 to 5 short "chapters" as a vertical timeline on mobile, alternating
+  left/right on desktop: e.g. "How it began", "The first meeting",
+  "The 'yes'", "Two families, one celebration". All text placeholder, stored
+  in translations.ts in both languages, easy to edit.
+- Each chapter: small line-art icon (hand-drawn SVG: tea cup, chai, ring,
+  matka, safa), title, 2 to 3 lines of text, optional photo slot.
+- Photo slot: rounded card with a soft mustard border, lazy-loaded,
+  object-cover. Use placeholder gradient blocks until I add photos.
+- A thin wheat-green vertical line connects chapters, drawing as you scroll.
+
+C. A short, warm Haryanvi-flavoured quote between countdown and story
+   (e.g. "घर में शादी है, आइयो ज़रूर!"), centred, large, with PhulkariDivider.
+```
+
+---
+
+# PHASE 4: EVENTS TIMELINE
+
+```
+PHASE 4: EVENTS (#events). Do only this phase.
+
+DATA MODEL (config + later Supabase)
+events: [{
+  id, nameKey (en/hi), emoji/icon, dateISO, startTime, endTime,
+  venueId, dressCode {en,hi}, description {en,hi}, colorAccent
+}]
+Use these placeholder events and let me edit them in config:
+Mehendi, Haldi, Sangeet, Baraat & Pheras, Reception. (Remove/add as needed.)
+
+UI
+- Section title "The Celebrations / समारोह".
+- Mobile: vertical timeline with date chips. Desktop: horizontal scroller
+  or 2-column cards.
+- Each event card: icon, name, date + time, venue name (tap to jump to map
+  and highlight that venue), dress code line with a small colour-swatch row
+  (e.g. haldi = yellow tones), short description.
+- "Add to calendar" button on each card generates an .ics file (lib/ics.ts)
+  with title, start/end, location text, description, and two reminders
+  (1 day before, 2 hours before). Works on iOS and Android.
+- Show a subtle "Happening today!" badge on the right day.
+- Add a "Full schedule" toggle that collapses/expands detail text.
+
+Dress code tips box: a small card "What to wear / क्या पहनें" with a
+playful line in both languages.
+```
+
+---
+
+# PHASE 5: VENUE + GOOGLE MAPS
+
+```
+PHASE 5: VENUE & MAP (#venue). Do only this phase.
+
+- Venues come from config (array). For each venue show: name, full address,
+  landmark line (e.g. "Opposite the school, 2 km from main road"), Plus Code,
+  and parking note.
+- Primary map approach: Google Maps EMBED (iframe, loading="lazy") using the
+  Embed URL for each venue's lat/lng. If more than one venue, use tabs or
+  chips to switch the map.
+- Buttons per venue:
+  1. "Get directions": https://www.google.com/maps/dir/?api=1&destination=LAT,LNG
+  2. "Open in Maps": https://www.google.com/maps/search/?api=1&query=LAT,LNG
+  3. "Copy address": copies address + landmark + Plus Code to the clipboard
+     with a "Copied!" toast (bilingual).
+  4. "Share location on WhatsApp": wa.me link prefilled with maps link.
+- Rural caveat: add a visible "Can't find us? / नहीं मिल रहा?" card with
+  the landmark description, a "Call for directions" button (tel: link to the
+  travel contact), and a slot for a route screenshot image.
+- OPTIONAL (only if I say "upgrade the map"): swap to Maps JavaScript API
+  with custom markers for venue / parking / stay / baraat point. Read the
+  key from VITE_GOOGLE_MAPS_KEY. Remind me to restrict the key to my domain
+  (HTTP referrers) and set a billing budget alert in Google Cloud.
+- Fallback: if the iframe fails or the user is offline, show a static card
+  with the text address and directions buttons so the section never looks empty.
+- Lat/lng must be single-sourced from config with a TODO to verify the pin on
+  a real phone at the real location.
+```
+
+---
+
+# PHASE 6: SUPABASE BACKEND + RSVP
+
+First run the SQL below in the Supabase SQL editor. It creates the tables with Row Level Security (RLS), which is what keeps a public anon key safe.
+
+### 6.0 SQL: run this yourself in Supabase
+
+```sql
+-- ============ TABLES ============
+create table if not exists public.rsvps (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  full_name text not null check (char_length(full_name) between 2 and 80),
+  phone text check (phone is null or char_length(phone) between 7 and 20),
+  attending text not null check (attending in ('yes','no','maybe')),
+  guest_count int not null default 1 check (guest_count between 1 and 15),
+  events text[] not null default '{}',
+  side text check (side in ('groom','bride','both')),
+  diet text check (diet in ('veg','non-veg','jain','none')),
+  needs_stay boolean not null default false,
+  needs_pickup boolean not null default false,
+  arrival_info text check (arrival_info is null or char_length(arrival_info) <= 200),
+  message text check (message is null or char_length(message) <= 300),
+  lang text check (lang in ('en','hi'))
+);
+
+create table if not exists public.wishes (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  name text not null check (char_length(name) between 2 and 60),
+  message text not null check (char_length(message) between 2 and 400),
+  approved boolean not null default false
+);
+
+create table if not exists public.song_requests (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  name text not null check (char_length(name) between 2 and 60),
+  song text not null check (char_length(song) between 2 and 120),
+  artist text check (artist is null or char_length(artist) <= 80)
+);
+
+create table if not exists public.contacts (
+  id uuid primary key default gen_random_uuid(),
+  sort_order int not null default 0,
+  role text not null,              -- 'travel','stay','general','food', etc.
+  role_label_en text not null,
+  role_label_hi text not null,
+  name_en text not null,
+  name_hi text,
+  phone text not null,             -- digits with country code, e.g. 919XXXXXXXXX
+  whatsapp text,                   -- optional separate WhatsApp number
+  languages text not null default 'Hindi / English',
+  photo_url text,
+  active boolean not null default true
+);
+
+create table if not exists public.events (
+  id uuid primary key default gen_random_uuid(),
+  sort_order int not null default 0,
+  slug text unique not null,
+  name_en text not null, name_hi text not null,
+  starts_at timestamptz, ends_at timestamptz,
+  venue_name_en text, venue_name_hi text,
+  dress_code_en text, dress_code_hi text,
+  description_en text, description_hi text,
+  active boolean not null default true
+);
+
+-- ============ ROW LEVEL SECURITY ============
+alter table public.rsvps enable row level security;
+alter table public.wishes enable row level security;
+alter table public.song_requests enable row level security;
+alter table public.contacts enable row level security;
+alter table public.events enable row level security;
+
+-- Guests (anon) can ONLY insert RSVPs. They cannot read anyone's data.
+create policy "anon can insert rsvps" on public.rsvps
+  for insert to anon with check (true);
+
+-- Wishes: anyone can add (unapproved), anyone can read only approved ones.
+create policy "anon can insert wishes" on public.wishes
+  for insert to anon with check (approved = false);
+create policy "anon can read approved wishes" on public.wishes
+  for select to anon using (approved = true);
+
+-- Song requests: insert only.
+create policy "anon can insert songs" on public.song_requests
+  for insert to anon with check (true);
+
+-- Contacts and events: public read-only (active rows).
+create policy "anon can read contacts" on public.contacts
+  for select to anon using (active = true);
+create policy "anon can read events" on public.events
+  for select to anon using (active = true);
+
+-- No update/delete policies for anon = they are impossible from the client.
+-- You (the owner) manage all rows from the Supabase dashboard.
+
+-- ============ STORAGE ============
+-- In Dashboard -> Storage create a PUBLIC bucket named "invites"
+-- (for invitation card PNG/PDF) and a PUBLIC bucket "photos" (couple photos,
+-- contact photos). Upload files there; use their public URLs in the site.
+```
+
+> Security notes: the anon key is public by design, and RLS is what protects the data. Never put the `service_role` key in AI Studio or in client code. Because RSVP rows hold phone numbers, no `select` policy exists for anon, so only you can read them in the dashboard.
+
+### 6.1 Prompt: Supabase client + RSVP form
+
+```
+PHASE 6: SUPABASE + RSVP (#rsvp). Do only this phase.
+
+SETUP
+- lib/supabaseClient.ts: createClient using import.meta.env.VITE_SUPABASE_URL
+  and VITE_SUPABASE_ANON_KEY. Add a .env.example with placeholders. If env
+  vars are missing, the site must still render and RSVP shows a friendly
+  "Please contact the family directly" fallback (call/WhatsApp buttons).
+- Tables already exist: rsvps, wishes, song_requests, contacts, events
+  (schema: I will paste it below). Do not try to create tables from code.
+  [PASTE THE SQL ABOVE HERE]
+
+RSVP FORM (title "आइयो ज़रूर! / Will you join us?")
+Fields:
+1. Full name (required)
+2. Phone / WhatsApp (optional but encouraged, validate Indian 10-digit or
+   +91, strip spaces)
+3. Attending: three big tap-cards: "Yes, with joy / हाँ, ज़रूर" ,
+   "Sorry, can't make it / माफ़ कीजिए", "Maybe / शायद"
+4. Number of guests (stepper, 1-15)
+5. Which events will you attend (multi-select chips built from events config)
+6. Which side: Groom / Bride / Both
+7. Food preference: Veg / Non-veg / Jain / No preference
+8. Need stay? (toggle) Need pickup? (toggle) + "Arrival time & place" text
+   (shown only if pickup = yes)
+9. A message for the couple (optional, 300 chars with counter)
+- If attending = "no", collapse the form to name + message only.
+
+BEHAVIOUR
+- Inline validation with friendly bilingual error messages.
+- Honeypot hidden field + minimum 3-second fill time to block bots.
+- Client-side throttle: block a second submission for 30 seconds, and
+  remember a successful submit in localStorage so a refresh shows "Thanks,
+  we already have your RSVP" with an "Edit / send again" option.
+- Submit with supabase.from('rsvps').insert(...). Handle errors, show a retry.
+  Never log personal data to the console.
+- On success: dhol roll sound (respect mute), confetti burst (canvas-confetti
+  or small custom canvas, disabled under reduced-motion), and a thank-you card
+  with: "Add to calendar", "Download invitation", "Share on WhatsApp".
+- Loading state on the button, disabled while submitting, 44px+ tap targets.
+- Works on slow networks: show a spinner after 400ms and a "still trying…"
+  message after 6s.
+```
+
+---
+
+# PHASE 7: INVITATION CARD, CALENDAR, WHATSAPP SHARE
+
+```
+PHASE 7: INVITATION & SHARING (#invitation). Do only this phase.
+
+A. STATIC INVITATION DOWNLOAD
+- "Download invitation / निमंत्रण डाउनलोड करें" buttons for PNG and PDF.
+  Files are hosted in Supabase Storage bucket "invites". Put the public URLs
+  in config with TODOs. Use the <a download> attribute and a fallback that
+  opens the file in a new tab (some in-app browsers block downloads).
+
+B. PERSONALISED CARD GENERATOR (the fun one)
+- Input: "Your name / आपका नाम". Button: "Create my card".
+- Render an HTML card (portrait 1080x1350) with: monogram, "Rahul weds
+  Radhika", "Dear [Name], you are warmly invited", date, venue, phulkari
+  border, blessing line, in the current language.
+- Convert to PNG with html2canvas (lazy-load the library only when this
+  section is used). Offer: Download PNG, Share (Web Share API with file if
+  supported, else download).
+- Make sure Devanagari renders correctly in the canvas (wait for
+  document.fonts.ready before capture; scale 2).
+- Optional PDF via jsPDF, also lazy-loaded.
+- Guard against failures: if capture fails, show a message and offer the
+  static card instead.
+
+C. ADD TO CALENDAR
+- "Add all events to calendar": one .ics with all events. Individual
+  buttons already exist in Phase 4; reuse lib/ics.ts.
+
+D. WHATSAPP SHARE
+- "Share on WhatsApp" using https://wa.me/?text=ENCODED with a warm bilingual
+  message (from config) + site URL. Also a "Copy link" button with toast.
+- Include a "Invite via WhatsApp status" tip with the card PNG.
+```
+
+---
+
+# PHASE 8: HELP / SUPPORT CONTACTS
+
+```
+PHASE 8: SUPPORT CONTACTS (#help + floating button). Do only this phase.
+
+- Fetch contacts from Supabase (table: contacts, active = true, order by
+  sort_order). Cache in memory and show a config fallback if the request
+  fails or the user is offline.
+- Section "Need help? / मदद चाहिए?" with cards grouped by role: Travel &
+  Pickup, Stay & Rooms, Food, General Help.
+- Each card: photo or role icon, name (en/hi), role label, languages note
+  ("Hindi / English"), and two big buttons:
+  - Call: tel:+<phone>
+  - WhatsApp: https://wa.me/<whatsapp or phone>?text=<bilingual prefilled text>
+- Floating help button (bottom-right, mustard, 56px): opens a bottom sheet
+  with the same contacts. It must not overlap the mute button or the RSVP
+  button on small screens. Hide it while the entry screen is visible.
+- Skeleton loaders while fetching. Empty state: "Contacts coming soon".
+- Add a line "Please call between 8 AM and 9 PM" (editable in translations).
+- Phone numbers are public by design; remind me to share only family numbers
+  I am comfortable with.
+```
+
+---
+
+# PHASE 9: WISHES WALL + SONG REQUESTS
+
+```
+PHASE 9: WISHES & SONGS (#wishes). Do only this phase.
+
+A. WISHES WALL
+- Form: name + message (400 chars). Submitting inserts with approved=false.
+  Show "Thank you! Your wish will appear after the family approves it."
+- Display approved wishes only, as a soft masonry/stacked-card wall with
+  slight random rotation (-2° to 2°), mustard/wheat/terracotta tape accents,
+  fade-in on scroll. Paginate or "Load more" (12 per page).
+- Basic client-side profanity/length sanity check + honeypot + 30s throttle.
+
+B. SONG REQUESTS
+- Compact form: name, song, artist (optional). Insert-only, no public list
+  (to avoid spam). Success message: "DJ has been told! / डीजे को बता दिया!"
+  with a small dhol hit.
+
+C. MODERATION NOTE (for me, in a comment at the top of the file)
+- Explain that I approve wishes by setting approved=true in the Supabase
+  Table Editor, and how to export song requests as CSV for the DJ.
+```
+
+---
+
+# PHASE 10: FOOTER
+
+```
+PHASE 10: FOOTER. Do only this phase.
+
+- Thin PhulkariDivider at the top.
+- Blessing line, centred: "Rahul & Radhika" with
+  "आप सबके आशीर्वाद के साथ" underneath (follows language: EN shows
+  "With all your blessings").
+- Small row: Back to top, Language toggle, Mute toggle.
+- Bottom signature, centred and small, understated:
+  EN: "Made with ❤️ by Rohit"
+  HI: "रोहित द्वारा ❤️ से बनाया गया"
+- The heart gently pulses (scale 1 -> 1.15, 1.6s ease-in-out infinite),
+  terracotta colour, disabled under reduced-motion.
+- Footer text follows the language toggle and comes from translations.ts.
+- Padding at the bottom so the floating buttons never cover the signature.
+```
+
+---
+
+# PHASE 11: SEO, WHATSAPP PREVIEW, PWA-LITE, PERFORMANCE
+
+```
+PHASE 11: PREVIEW, SEO, PERFORMANCE. Do only this phase.
+
+- index.html: <title> "Rahul weds Radhika | आप सब आमंत्रित हैं", meta
+  description (bilingual), theme-color #FBF6EA, viewport, lang attribute.
+- Open Graph + Twitter tags: og:title, og:description, og:image (1200x630
+  R & R monogram/hero image hosted at a stable public URL), og:url,
+  og:type=website. This is what shows when the link is shared on WhatsApp.
+  Add a note: WhatsApp caches previews, so test with a fresh URL parameter.
+- Favicon: R & R monogram (SVG + 180px apple-touch-icon + 192/512 PNG).
+- manifest.webmanifest so the site can be "Added to Home screen".
+- Performance: code-split heavy libs (html2canvas, jsPDF, confetti), preload
+  the two main fonts, use font-display: swap, compress and lazy-load images,
+  remove unused CSS, avoid layout shift. Run a Lighthouse mobile audit mindset:
+  target >= 90 performance.
+- Add <noscript> fallback with names, date, venue and phone numbers.
+- Offline-friendly basics: cache the shell and static text with a tiny service
+  worker (optional, only if it does not break Supabase calls).
+```
+
+---
+
+# PHASE 12: PRIVATE ADMIN DASHBOARD (optional, family-friendly)
+
+```
+PHASE 12 (OPTIONAL): ADMIN PAGE at /admin. Do only this phase.
+
+- Login with Supabase Auth (email magic link) restricted to specific owner
+  emails (Rohit, groom's family). Do NOT ship any admin secret in client code.
+- I will add RLS policies for the authenticated owners separately (ask me
+  to provide them; do not invent policies silently).
+- Views: RSVP summary cards (Yes / No / Maybe totals, total headcount, veg
+  vs non-veg counts, stay needed, pickup needed), RSVP table with search and
+  filter by event/side, CSV export, wishes moderation (approve/delete),
+  contacts editor.
+- Mobile-friendly, simple, no fancy animation, noindex meta tag.
+```
+
+---
+
+# PHASE 13: QA, FIXES, LAUNCH CHECKLIST
+
+```
+PHASE 13: FINAL QA. Review the whole project and report, then fix.
+
+1. Run through every section in English and Hindi. List any untranslated
+   string, overflow, broken font or missing key.
+2. Verify mobile at 320, 360, 390, 768 and 1280 widths. No horizontal scroll.
+3. Verify audio: nothing plays before the first tap, mute persists, music
+   pauses when tab hidden.
+4. Verify forms: validation, throttle, honeypot, error handling, offline mode.
+5. Verify no secrets in code; env vars only; .env.example is present.
+6. Verify accessibility basics: focus order, labels, contrast, alt text.
+7. Verify bundle size and list the 5 heaviest assets with suggestions.
+8. Produce a punch-list of remaining TODOs/placeholders (date, venue, photos,
+   audio, contacts, lat/lng, invitation files, OG image).
+```
+
+### Launch checklist (for you, Rohit)
+
+- [ ] Replace `[DATE]`, `[VILLAGE, HARYANA]`, events, lat/lng in `config/wedding.ts`
+- [ ] Elders verified all Hindi text, especially the blessing line
+- [ ] Real photos, final music and dhol files uploaded (compressed)
+- [ ] Contacts added in Supabase, tested on real phones
+- [ ] RLS enabled on all tables, no `service_role` key anywhere
+- [ ] Google Maps key (if used) restricted to your domain, with a budget alert
+- [ ] Maps pin tested on-site, with landmark and phone fallback
+- [ ] Shared the link in a WhatsApp chat and confirmed the preview image/title
+- [ ] Tested on a low-end Android on mobile data
+- [ ] Backed up the RSVP table (CSV export) the week before the wedding
+
+---
+
+# BONUS: "CRAZY" CREATIVE IDEAS (add after the core is stable)
+
+Pick two or three. Don't add all of them.
+
+1. **Safa Stylist (interactive).** The guest picks a safa colour and pattern, adds their name, and gets a shareable "My wedding look" card. Pure fun, and it spreads on WhatsApp.
+2. **Baraat Radio.** A tiny player with a Haryanvi and Punjabi wedding playlist (embedded Spotify or YouTube playlist) that guests can also add songs to.
+3. **Guess the Couple Quiz.** 5 playful questions about Rahul and Radhika with a cute result screen. Use the quiz format and keep it under 60 seconds.
+4. **Haryanvi Phrase of the Day.** A countdown-linked card that shows a new funny Haryanvi phrase each day with its English meaning, so guests warm up for the wedding.
+5. **Sunrise-to-Sunset Scroll.** The page background slowly shifts from sunrise cream through golden hour to a deep-wheat dusk as the visitor scrolls, ending in a starry footer.
+6. **"Who's coming" Counter.** A live total of confirmed guests, shown as "127 hearts are coming", without revealing any names.
+7. **Memory Lane Gallery.** A pre-wedding photo timeline with a swipeable polaroid stack. Photos are stored in Supabase Storage and lazy-loaded.
+8. **Voice Blessings.** Elders record a 20-second audio blessing (uploaded to Storage) that guests can play. It's emotional and unique, but moderate it first.
+9. **Post-wedding mode.** After the date, flip the site to "Thank you" with a photo gallery upload slot for guests (moderated).
+10. **Mehendi Name Hunt.** A mini-game hiding "R" in a mehendi pattern, with a confetti reward.
+
+---
+
+# TROUBLESHOOTING PROMPTS (copy when needed)
+
+- **Style drift:** "Re-read the Phase 0 design rules. The current output is too [rustic/cluttered/colourful]. Adjust only styling, not logic."
+- **Hindi font wrong:** "Hindi text is not using Noto Serif Devanagari / Hind. Fix the font application based on `lang`, without touching other files."
+- **Audio not playing on iPhone:** "Make sure the AudioContext is created or resumed inside the user's tap handler, and that no audio plays before it."
+- **Supabase insert fails:** "Show me the exact error object and the RLS policy needed. Do not weaken RLS and do not use a service key."
+- **Layout break on small phones:** "At 320px width, [section] overflows. Fix with responsive utilities only."
+- **Too heavy:** "List every asset and dependency over 100 KB and propose smaller alternatives."
+- **Gemini rewrote everything:** "Revert only the last change. From now on, edit only the files I name."

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      (function() {
+        // Compatibility fix for browser extensions attempting to intercept window.fetch
+        try {
+          var origFetch = window.fetch ? window.fetch.bind(window) : undefined;
+          var activeFetch = origFetch;
+          var desc = Object.getOwnPropertyDescriptor(window, 'fetch');
+          if (!desc || desc.configurable) {
+            Object.defineProperty(window, 'fetch', {
+              get: function() {
+                return activeFetch;
+              },
+              set: function(fn) {
+                activeFetch = fn;
+              },
+              configurable: true,
+              enumerable: true,
+            });
+          }
+        } catch (e) {
+          // Continue silently if environment restricts window descriptor redefinition
+        }
+
+        // Suppress external browser extension injection errors from crashing the page
+        window.addEventListener(
+          'error',
+          function(e) {
+            var msg = (e && e.message) || '';
+            var file = (e && e.filename) || '';
+            var stack = (e && e.error && e.error.stack) || '';
+            if (
+              file.indexOf('chrome-extension://') !== -1 ||
+              stack.indexOf('chrome-extension://') !== -1 ||
+              msg.indexOf('Cannot set property fetch') !== -1
+            ) {
+              if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+              if (e.preventDefault) e.preventDefault();
+              return true;
+            }
+          },
+          true
+        );
+
+        window.addEventListener(
+          'unhandledrejection',
+          function(e) {
+            var reason = e && e.reason;
+            var stack = (reason && reason.stack) || '';
+            var msg = (reason && reason.message) || String(reason || '');
+            if (
+              stack.indexOf('chrome-extension://') !== -1 ||
+              msg.indexOf('Cannot set property fetch') !== -1
+            ) {
+              if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+              if (e.preventDefault) e.preventDefault();
+            }
+          },
+          true
+        );
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#FFF4F6" />
+    <title>Rahul weds Radhika · राहुल और राधिका | Wedding Celebration</title>
+    <meta
+      name="description"
+      content="Ram Ram! Join us in celebrating the wedding of Rahul & Radhika (राहुल और राधिका) in Rohtak, Haryana on 28 November 2026. Aaiyo Zaroor! Schedule, maps, and invitation cards."
+    />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Open Graph for WhatsApp & Social Sharing -->
+    <meta property="og:title" content="Rahul weds Radhika · राहुल और राधिका" />
+    <meta
+      property="og:description"
+      content="राम राम! राहुल और राधिका के शुभ विवाह (28 नवंबर 2026, रोहतक, हरियाणा) में आप सपरिवार सादर आमंत्रित हैं। आइयो ज़रूर!"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://rahulweddsradhika.in" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Google Fonts for English and Hindi typography with display=swap -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hind:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Noto+Serif+Devanagari:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="bg-[#FFF4F6] text-[#33252B] antialiased selection:bg-[#F8E3E9] selection:text-[#702C43]">
+    <noscript>
+      <div style="padding: 24px; text-align: center; font-family: sans-serif; background: #FFF4F6; color: #33252B;">
+        <h1 style="color: #702C43;">Rahul weds Radhika · राहुल और राधिका</h1>
+        <p>28 November 2026 · Village Dobh & Morbagh Pavilion, Rohtak, Haryana</p>
+        <p>Ram Ram! Please enable JavaScript to view the full interactive invitation and schedule.</p>
+        <p>Contact for help: +91 94160 88210 / +91 98120 45108</p>
+      </div>
+    </noscript>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
