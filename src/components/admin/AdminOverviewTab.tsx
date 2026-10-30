@@ -77,7 +77,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({
               </span>
             </div>
             <p className="text-xs text-amber-800/90 dark:text-amber-300/80 mt-0.5 leading-relaxed">
-              All edits, photos, and RSVP records are stored safely in this browser (LocalStorage & IndexedDB).
+              All edits, photos, and wedding settings are stored safely in this browser (LocalStorage & IndexedDB).
               Changes update the public website immediately on this device.
             </p>
           </div>

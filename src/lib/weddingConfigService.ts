@@ -3,16 +3,28 @@
  * 
  * Provides unified persistence across Supabase Cloud and Local Storage fallback.
  * Enforces schema validation, version tracking, deep merge migration, and bilingual integrity.
+ * Strictly reports typed save outcomes, error codes, and audit details.
  */
 
 import { DEFAULT_WEDDING_CONFIG } from '../config/wedding';
 import { WeddingConfig } from '../types/wedding';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { isDevLocalModeAllowed } from './authService';
+import { resolveMediaUrl } from './mediaStorage';
 
 export const CONFIG_STORAGE_KEY = 'rahul_radhika_wedding_config_v3';
 export const BACKUP_STORAGE_KEY = 'rahul_radhika_wedding_config_backup_v3';
 
 export type PersistenceMode = 'supabase' | 'local';
+export type SaveConfigTarget = 'supabase' | 'local_only' | 'none';
+
+export type SaveConfigErrorCode =
+  | 'UNAUTHENTICATED'
+  | 'FORBIDDEN'
+  | 'NETWORK_ERROR'
+  | 'INVALID_CONFIG'
+  | 'STORAGE_QUOTA_EXCEEDED'
+  | 'UNKNOWN';
 
 export interface LoadConfigResult {
   config: WeddingConfig;
@@ -22,9 +34,12 @@ export interface LoadConfigResult {
 
 export interface SaveConfigResult {
   success: boolean;
+  target: SaveConfigTarget;
   mode: PersistenceMode;
   error?: string;
+  errorCode?: SaveConfigErrorCode;
   warning?: string;
+  savedAt: string;
 }
 
 /**
@@ -224,6 +239,43 @@ export function migrateConfig(loaded: Partial<WeddingConfig>): WeddingConfig {
   };
 }
 
+export interface LocalStorageWriteResult {
+  success: boolean;
+  error?: string;
+  isQuotaExceeded?: boolean;
+}
+
+/**
+ * Save configuration to local browser storage with automatic backup and quota detection.
+ */
+export function saveToLocalStorage(config: WeddingConfig): LocalStorageWriteResult {
+  if (typeof window === 'undefined') {
+    return { success: false, error: 'Window is not defined' };
+  }
+
+  try {
+    const serialized = JSON.stringify(config);
+    const existing = window.localStorage.getItem(CONFIG_STORAGE_KEY);
+    if (existing) {
+      window.localStorage.setItem(BACKUP_STORAGE_KEY, existing);
+    }
+    window.localStorage.setItem(CONFIG_STORAGE_KEY, serialized);
+    return { success: true };
+  } catch (err: unknown) {
+    const isQuota =
+      err instanceof DOMException &&
+      (err.name === 'QuotaExceededError' ||
+        err.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+        err.code === 22);
+    console.error('Failed to save config to localStorage:', err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Local storage write failed',
+      isQuotaExceeded: isQuota,
+    };
+  }
+}
+
 /**
  * Load configuration from local browser storage cache
  */
@@ -245,22 +297,29 @@ export function loadFromLocalStorage(): WeddingConfig | null {
 }
 
 /**
- * Save configuration to local browser storage with automatic backup
+ * Rehydrates any local IndexedDB media references stored in configuration.
  */
-export function saveToLocalStorage(config: WeddingConfig): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    const serialized = JSON.stringify(config);
-    const existing = window.localStorage.getItem(CONFIG_STORAGE_KEY);
-    if (existing) {
-      window.localStorage.setItem(BACKUP_STORAGE_KEY, existing);
+export async function rehydrateLocalMedia(config: WeddingConfig): Promise<WeddingConfig> {
+  const media = { ...config.media };
+  let changed = false;
+
+  if (media.couplePortrait?.startsWith('indexeddb://')) {
+    const resolved = await resolveMediaUrl(media.couplePortrait);
+    if (resolved) {
+      media.couplePortrait = resolved;
+      changed = true;
     }
-    window.localStorage.setItem(CONFIG_STORAGE_KEY, serialized);
-    return true;
-  } catch (err) {
-    console.error('Failed to save config to localStorage:', err);
-    return false;
   }
+
+  if (media.venueCourtyard?.startsWith('indexeddb://')) {
+    const resolved = await resolveMediaUrl(media.venueCourtyard);
+    if (resolved) {
+      media.venueCourtyard = resolved;
+      changed = true;
+    }
+  }
+
+  return changed ? { ...config, media } : config;
 }
 
 /**
@@ -280,15 +339,13 @@ export async function loadCanonicalConfig(): Promise<LoadConfigResult> {
         .maybeSingle();
 
       if (!error && data && data.config) {
-        const validation = validateWeddingConfig(data.config);
-        const migrated = validation.valid
-          ? migrateConfig(data.config as Partial<WeddingConfig>)
-          : migrateConfig(data.config as Partial<WeddingConfig>);
+        const migrated = migrateConfig(data.config as Partial<WeddingConfig>);
+        const rehydrated = await rehydrateLocalMedia(migrated);
 
         // Update local cache for offline resiliency
-        saveToLocalStorage(migrated);
+        saveToLocalStorage(rehydrated);
         return {
-          config: migrated,
+          config: rehydrated,
           mode: 'supabase',
         };
       } else if (error) {
@@ -302,15 +359,17 @@ export async function loadCanonicalConfig(): Promise<LoadConfigResult> {
   // Fallback to local storage
   const local = loadFromLocalStorage();
   if (local) {
+    const rehydrated = await rehydrateLocalMedia(local);
     return {
-      config: local,
+      config: rehydrated,
       mode: 'local',
     };
   }
 
   // Final fallback to compiled defaults
+  const defaults = JSON.parse(JSON.stringify(DEFAULT_WEDDING_CONFIG)) as WeddingConfig;
   return {
-    config: JSON.parse(JSON.stringify(DEFAULT_WEDDING_CONFIG)),
+    config: defaults,
     mode: 'local',
   };
 }
@@ -318,47 +377,69 @@ export async function loadCanonicalConfig(): Promise<LoadConfigResult> {
 /**
  * Single Canonical Save Function:
  * 1. Validates configuration.
- * 2. If Supabase configured and admin authenticated, saves to `wedding_config` table.
- * 3. Always maintains local cache as backup.
+ * 2. Saves local backup to localStorage, checking quota limits.
+ * 3. If Supabase configured & authenticated admin, upserts to `wedding_config` table.
+ * 4. Returns typed, granular SaveConfigResult.
  */
 export async function saveCanonicalConfig(
   config: WeddingConfig,
   authorEmail?: string | null
 ): Promise<SaveConfigResult> {
+  const savedAt = new Date().toISOString();
+
   // 1. Validation check
   const validation = validateWeddingConfig(config);
   if (!validation.valid) {
     return {
       success: false,
+      target: 'none',
       mode: 'local',
       error: `Validation failed: ${validation.errors.join('; ')}`,
+      errorCode: 'INVALID_CONFIG',
+      savedAt,
     };
   }
 
   const updatedConfig: WeddingConfig = {
     ...config,
-    lastUpdatedISO: new Date().toISOString(),
+    lastUpdatedISO: savedAt,
   };
 
-  // 2. Always persist locally for offline access
-  saveToLocalStorage(updatedConfig);
+  // 2. Persist locally for offline access & safety
+  const localResult = saveToLocalStorage(updatedConfig);
 
   // 3. Supabase Cloud Persistence
   if (isSupabaseConfigured && supabase) {
     try {
       // Check for active Supabase Auth session
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-      if (!session) {
-        return {
-          success: true,
-          mode: 'local',
-          warning:
-            'Saved to this device. To sync changes across all visitor devices, sign in with Supabase Admin credentials in the Security tab.',
-        };
+      if (sessionError || !session) {
+        // Not authenticated
+        if (isDevLocalModeAllowed()) {
+          return {
+            success: localResult.success,
+            target: localResult.success ? 'local_only' : 'none',
+            mode: 'local',
+            warning: 'Unauthenticated in Supabase. Saved to local storage only in development mode.',
+            errorCode: 'UNAUTHENTICATED',
+            error: localResult.success ? undefined : 'Unauthenticated and local storage failed.',
+            savedAt,
+          };
+        } else {
+          return {
+            success: false,
+            target: 'none',
+            mode: 'local',
+            error: 'Authentication required. Please sign in with an authorized wedding admin account.',
+            errorCode: 'UNAUTHENTICATED',
+            savedAt,
+          };
+        }
       }
 
-      const { error } = await supabase
+      // Authenticated: Upsert to canonical config row
+      const { error: upsertError } = await supabase
         .from('wedding_config')
         .upsert(
           {
@@ -371,33 +452,70 @@ export async function saveCanonicalConfig(
           { onConflict: 'id' }
         );
 
-      if (error) {
-        console.error('Supabase save error:', error);
+      if (upsertError) {
+        console.error('Supabase save error:', upsertError);
+        const isForbidden =
+          upsertError.code === '42501' ||
+          upsertError.message?.toLowerCase().includes('violates row-level security') ||
+          upsertError.message?.toLowerCase().includes('denied');
+
+        const errorCode: SaveConfigErrorCode = isForbidden ? 'FORBIDDEN' : 'NETWORK_ERROR';
+
         return {
           success: false,
+          target: localResult.success ? 'local_only' : 'none',
           mode: 'supabase',
-          error: `Database save failed: ${error.message}. Local copy was preserved.`,
+          error: `Database save failed (${upsertError.message}). ${
+            localResult.success ? 'Local copy preserved.' : 'Local copy also failed.'
+          }`,
+          errorCode,
+          savedAt,
         };
       }
 
       return {
         success: true,
+        target: 'supabase',
         mode: 'supabase',
+        savedAt,
       };
     } catch (err) {
       console.error('Supabase network error during save:', err);
       return {
         success: false,
+        target: localResult.success ? 'local_only' : 'none',
         mode: 'supabase',
-        error: `Network error: ${err instanceof Error ? err.message : 'Unknown error'}. Saved locally.`,
+        error: `Network error: ${err instanceof Error ? err.message : 'Unknown'}. ${
+          localResult.success ? 'Saved locally.' : 'Local storage also failed.'
+        }`,
+        errorCode: 'NETWORK_ERROR',
+        savedAt,
       };
     }
   }
 
-  // Standalone local mode
+  // 4. Standalone local mode (No Supabase configured)
+  if (localResult.success) {
+    return {
+      success: true,
+      target: 'local_only',
+      mode: 'local',
+      warning: isDevLocalModeAllowed()
+        ? 'Running in local dev mode. Saved to browser storage.'
+        : undefined,
+      savedAt,
+    };
+  }
+
   return {
-    success: true,
+    success: false,
+    target: 'none',
     mode: 'local',
+    error: localResult.isQuotaExceeded
+      ? 'Browser storage quota exceeded. Unable to save configuration.'
+      : (localResult.error || 'Failed to save configuration to local storage.'),
+    errorCode: localResult.isQuotaExceeded ? 'STORAGE_QUOTA_EXCEEDED' : 'UNKNOWN',
+    savedAt,
   };
 }
 

@@ -52,14 +52,13 @@ export const AdminBackupTab: React.FC = () => {
   };
 
   const handleWipeAllLocalData = async () => {
-    if (!confirm('DANGER: This will delete all local configuration, offline RSVP entries, guest wishes, and cached uploaded media from this browser. Proceed?')) {
+    if (!confirm('DANGER: This will delete all local configuration, guest wishes, and cached uploaded media from this browser. Proceed?')) {
       return;
     }
     setIsWiping(true);
     try {
       await localWeddingStorage.clearAllLocalData();
       await indexedDbMedia.clearAllMedia();
-      window.localStorage.removeItem('wedding_admin_all_rsvps');
       window.localStorage.removeItem('wedding_admin_all_wishes_v3');
       window.localStorage.removeItem('wedding_admin_all_songs_v3');
       window.location.reload();

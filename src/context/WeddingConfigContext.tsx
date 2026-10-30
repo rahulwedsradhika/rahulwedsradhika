@@ -8,6 +8,8 @@ import {
   saveCanonicalConfig,
   resetCanonicalConfig,
   PersistenceMode,
+  SaveConfigResult,
+  SaveConfigErrorCode,
 } from '../lib/weddingConfigService';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
 
@@ -23,6 +25,8 @@ export interface WeddingConfigContextValue {
   isSaving: boolean;
   saveError: string | null;
   saveWarning: string | null;
+  saveErrorCode: SaveConfigErrorCode | null;
+  lastSaveResult: SaveConfigResult | null;
   lastSavedAt: string | null;
   hasUnsavedChanges: boolean;
   saveChanges: () => Promise<boolean>;
@@ -41,6 +45,8 @@ export const WeddingConfigProvider: React.FC<{ children: React.ReactNode }> = ({
   const [persistenceMode, setPersistenceMode] = useState<PersistenceMode>('local');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveWarning, setSaveWarning] = useState<string | null>(null);
+  const [saveErrorCode, setSaveErrorCode] = useState<SaveConfigErrorCode | null>(null);
+  const [lastSaveResult, setLastSaveResult] = useState<SaveConfigResult | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 
   // Apply theme variables to document root
@@ -104,9 +110,11 @@ export const WeddingConfigProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsSaving(true);
     setSaveError(null);
     setSaveWarning(null);
+    setSaveErrorCode(null);
 
     const result = await saveCanonicalConfig(next);
     setIsSaving(false);
+    setLastSaveResult(result);
 
     if (result.success) {
       setPersistedSnapshot(JSON.stringify(next));
@@ -118,6 +126,7 @@ export const WeddingConfigProvider: React.FC<{ children: React.ReactNode }> = ({
       return true;
     } else {
       setSaveError(result.error || 'Failed to save configuration');
+      setSaveErrorCode(result.errorCode || 'UNKNOWN');
       return false;
     }
   };
@@ -126,9 +135,11 @@ export const WeddingConfigProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsSaving(true);
     setSaveError(null);
     setSaveWarning(null);
+    setSaveErrorCode(null);
 
     const result = await saveCanonicalConfig(config);
     setIsSaving(false);
+    setLastSaveResult(result);
 
     if (result.success) {
       setPersistedSnapshot(JSON.stringify(config));
@@ -140,6 +151,7 @@ export const WeddingConfigProvider: React.FC<{ children: React.ReactNode }> = ({
       return true;
     } else {
       setSaveError(result.error || 'Failed to save configuration');
+      setSaveErrorCode(result.errorCode || 'UNKNOWN');
       return false;
     }
   };
@@ -148,6 +160,7 @@ export const WeddingConfigProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsSaving(true);
     setSaveError(null);
     setSaveWarning(null);
+    setSaveErrorCode(null);
     try {
       const defaults = await resetCanonicalConfig();
       setConfig(defaults);
@@ -169,6 +182,7 @@ export const WeddingConfigProvider: React.FC<{ children: React.ReactNode }> = ({
   const importConfig = async (file: File): Promise<{ success: boolean; error?: string }> => {
     setSaveError(null);
     setSaveWarning(null);
+    setSaveErrorCode(null);
     const result = await parseImportedConfigFile(file);
     if (!result.success || !result.config) {
       setSaveError(result.error || 'Invalid configuration file');
@@ -182,6 +196,7 @@ export const WeddingConfigProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsSaving(true);
     const saveRes = await saveCanonicalConfig(newConfig);
     setIsSaving(false);
+    setLastSaveResult(saveRes);
 
     if (saveRes.success) {
       setPersistedSnapshot(JSON.stringify(newConfig));
@@ -193,6 +208,7 @@ export const WeddingConfigProvider: React.FC<{ children: React.ReactNode }> = ({
       return { success: true };
     } else {
       setSaveError(saveRes.error || 'Failed to persist imported configuration');
+      setSaveErrorCode(saveRes.errorCode || 'UNKNOWN');
       return { success: false, error: saveRes.error };
     }
   };
@@ -211,6 +227,8 @@ export const WeddingConfigProvider: React.FC<{ children: React.ReactNode }> = ({
         isSaving,
         saveError,
         saveWarning,
+        saveErrorCode,
+        lastSaveResult,
         lastSavedAt,
         hasUnsavedChanges,
         saveChanges,
