@@ -203,7 +203,14 @@ export function loginAdminDev(passkey: string): { success: boolean; error?: stri
     };
   }
 
-  const configuredPasskey = import.meta.env.VITE_ADMIN_PASSKEY || 'wedding2026';
+  const configuredPasskey = import.meta.env.VITE_ADMIN_PASSKEY;
+  if (!configuredPasskey) {
+    return {
+      success: false,
+      error: 'Development passkey login is disabled because VITE_ADMIN_PASSKEY environment variable is not configured. Please set VITE_ADMIN_PASSKEY or authenticate via Supabase Auth.',
+    };
+  }
+
   if (passkey.trim() === configuredPasskey) {
     try {
       sessionStorage.setItem(DEV_ADMIN_SESSION_KEY, 'active_dev_only');

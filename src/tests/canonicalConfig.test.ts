@@ -12,6 +12,7 @@ import {
   loadCanonicalConfig,
 } from '../lib/weddingConfigService';
 import { validateMediaFile, MAX_PHOTO_BYTES } from '../lib/mediaStorage';
+import { loginAdminDev } from '../lib/authService';
 import { WeddingConfig } from '../types/wedding';
 
 describe('Phase 2 Canonical Data Architecture & Security', () => {
@@ -150,6 +151,13 @@ describe('Phase 2 Canonical Data Architecture & Security', () => {
       expect(typeof res.config.groom.en).toBe('string');
       expect(typeof res.config.bride.hi).toBe('string');
       expect(['supabase', 'local']).toContain(res.mode);
+    });
+
+    it('loginAdminDev rejects when VITE_ADMIN_PASSKEY environment secret is missing', () => {
+      // In test environment without VITE_ADMIN_PASSKEY set, loginAdminDev should fail with explicit message
+      const result = loginAdminDev('any-passkey');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('VITE_ADMIN_PASSKEY environment variable is not configured');
     });
   });
 });
