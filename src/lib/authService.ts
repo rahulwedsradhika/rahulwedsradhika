@@ -4,30 +4,19 @@
  * Production Security:
  * - Demands authentic Supabase Auth session with verified admin authorization.
  * - Checks public.wedding_admins allowlist table and JWT app_metadata.
- * - Local offline development mode is strictly restricted to import.meta.env.DEV.
- * - Production builds (import.meta.env.PROD) categorically reject client-side passkeys.
+ * - Passkey logic is completely removed; Supabase Auth is the single source of truth.
  */
 
 import { User, Session, AuthChangeEvent } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 
-export const DEV_ADMIN_SESSION_KEY = 'wedding_dev_local_admin_session_v3';
-
 export interface AdminAuthState {
   isAuthenticated: boolean;
   isAdmin: boolean;
   user: User | null;
-  role: 'admin' | 'superadmin' | 'dev_local' | null;
-  mode: 'supabase' | 'dev_local' | 'none';
+  role: 'admin' | 'superadmin' | null;
+  mode: 'supabase' | 'none';
   error: string | null;
-}
-
-/**
- * Returns true if local offline dev mode is permissible in this environment.
- * Strictly false in production builds (import.meta.env.PROD === true).
- */
-export function isDevLocalModeAllowed(): boolean {
-  return Boolean(import.meta.env.DEV);
 }
 
 /**
@@ -40,14 +29,18 @@ export async function verifyUserAdminRole(user: User): Promise<{
   role: 'admin' | 'superadmin' | null;
   error?: string;
 }> {
-  if (!supabase) {
-    return { isAdmin: false, role: null, error: 'Supabase client is unavailable.' };
-  }
-
   // 1. JWT app_metadata check (tamper-proof signed by Supabase Auth)
   const appRole = (user.app_metadata?.role as string | undefined)?.toLowerCase();
   if (appRole === 'admin' || appRole === 'superadmin') {
     return { isAdmin: true, role: appRole as 'admin' | 'superadmin' };
+  }
+
+  if (!supabase) {
+    return {
+      isAdmin: false,
+      role: null,
+      error: 'Access denied: Your account is authenticated, but is not registered in the wedding administrators allowlist.',
+    };
   }
 
   // 2. Query public.wedding_admins allowlist table
@@ -110,32 +103,13 @@ export async function getAdminAuthState(): Promise<AdminAuthState> {
     }
   }
 
-  // Fallback: Local dev mode ONLY in development (non-PROD)
-  if (isDevLocalModeAllowed()) {
-    try {
-      const activeDev = sessionStorage.getItem(DEV_ADMIN_SESSION_KEY);
-      if (activeDev === 'active_dev_only') {
-        return {
-          isAuthenticated: true,
-          isAdmin: true,
-          user: null,
-          role: 'dev_local',
-          mode: 'dev_local',
-          error: null,
-        };
-      }
-    } catch {
-      // Ignore
-    }
-  }
-
   return {
     isAuthenticated: false,
     isAdmin: false,
     user: null,
     role: null,
     mode: 'none',
-    error: null,
+    error: isSupabaseConfigured ? null : 'Supabase is not configured. Connect Supabase to authenticate as an administrator.',
   };
 }
 
@@ -192,46 +166,10 @@ export async function loginAdminSupabase(
 }
 
 /**
- * Sign in using Development Passkey.
- * Strictly blocked in production builds (PROD).
- */
-export function loginAdminDev(passkey: string): { success: boolean; error?: string } {
-  if (!isDevLocalModeAllowed()) {
-    return {
-      success: false,
-      error: 'Passkey login is strictly prohibited in production builds. Please authenticate via Supabase Auth.',
-    };
-  }
-
-  const configuredPasskey = import.meta.env.VITE_ADMIN_PASSKEY;
-  if (!configuredPasskey) {
-    return {
-      success: false,
-      error: 'Development passkey login is disabled because VITE_ADMIN_PASSKEY environment variable is not configured. Please set VITE_ADMIN_PASSKEY or authenticate via Supabase Auth.',
-    };
-  }
-
-  if (passkey.trim() === configuredPasskey) {
-    try {
-      sessionStorage.setItem(DEV_ADMIN_SESSION_KEY, 'active_dev_only');
-    } catch {
-      // Ignore
-    }
-    return { success: true };
-  }
-
-  return {
-    success: false,
-    error: 'Incorrect development passkey. Please check your local configuration.',
-  };
-}
-
-/**
  * Sign out administrator and immediately revoke all session credentials.
  */
 export async function signOutAdmin(): Promise<void> {
   try {
-    sessionStorage.removeItem(DEV_ADMIN_SESSION_KEY);
     sessionStorage.removeItem('wedding_admin_authenticated'); // Scrub legacy key
   } catch {
     // Ignore
@@ -288,3 +226,4 @@ export function subscribeToAuthChanges(
     subscription.unsubscribe();
   };
 }
+

@@ -4,6 +4,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { DEFAULT_WEDDING_CONFIG } from '../config/wedding';
 import {
   validateWeddingConfig,
@@ -12,8 +14,13 @@ import {
   loadCanonicalConfig,
 } from '../lib/weddingConfigService';
 import { validateMediaFile, MAX_PHOTO_BYTES } from '../lib/mediaStorage';
-import { loginAdminDev } from '../lib/authService';
+import {
+  getAdminAuthState,
+  verifyUserAdminRole,
+  loginAdminSupabase,
+} from '../lib/authService';
 import { WeddingConfig } from '../types/wedding';
+import { User } from '@supabase/supabase-js';
 
 describe('Phase 2 Canonical Data Architecture & Security', () => {
   describe('1. Canonical Schema Validation', () => {
@@ -152,12 +159,91 @@ describe('Phase 2 Canonical Data Architecture & Security', () => {
       expect(typeof res.config.bride.hi).toBe('string');
       expect(['supabase', 'local']).toContain(res.mode);
     });
+  });
 
-    it('loginAdminDev rejects when VITE_ADMIN_PASSKEY environment secret is missing', () => {
-      // In test environment without VITE_ADMIN_PASSKEY set, loginAdminDev should fail with explicit message
-      const result = loginAdminDev('any-passkey');
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('VITE_ADMIN_PASSKEY environment variable is not configured');
+  describe('5. Admin Authorization & Passkey Removal', () => {
+    it('verifyUserAdminRole grants admin when app_metadata.role is admin', async () => {
+      const mockAdminUser = {
+        id: 'user-admin-123',
+        app_metadata: { role: 'admin' },
+      } as unknown as User;
+
+      const res = await verifyUserAdminRole(mockAdminUser);
+      expect(res.isAdmin).toBe(true);
+      expect(res.role).toBe('admin');
+    });
+
+    it('verifyUserAdminRole rejects non-admin users lacking allowlist status', async () => {
+      const mockGuestUser = {
+        id: 'guest-user-456',
+        app_metadata: { role: 'guest' },
+      } as unknown as User;
+
+      const res = await verifyUserAdminRole(mockGuestUser);
+      expect(res.isAdmin).toBe(false);
+      expect(res.error).toContain('Access denied');
+    });
+
+    it('getAdminAuthState returns non-authenticated state when no session exists', async () => {
+      const state = await getAdminAuthState();
+      expect(state.isAuthenticated).toBe(false);
+      expect(state.isAdmin).toBe(false);
+      expect(state.user).toBeNull();
+    });
+
+    it('loginAdminSupabase rejects when Supabase is not configured', async () => {
+      const res = await loginAdminSupabase('test@wedding.com', 'password123');
+      expect(res.success).toBe(false);
+      expect(res.error).toBeDefined();
+    });
+  });
+
+  describe('6. RLS Migration Static Analysis Policy Verification', () => {
+    it('supabase_canonical_schema.sql explicitly drops all legacy permissive policies', () => {
+      const schemaPath = path.resolve(process.cwd(), 'supabase_canonical_schema.sql');
+      const sql = fs.readFileSync(schemaPath, 'utf8');
+
+      const requiredDrops = [
+        'Admins can view wedding_admins',
+        'Public can read wedding_config',
+        'Only authenticated admins can modify wedding_config',
+        'Public can view approved memories only',
+        'Authenticated admins can view all memories',
+        'Guests can upload pending memories',
+        'Only authenticated admins can update memories',
+        'Only authenticated admins can delete memories',
+        'Admins full access to memories',
+        'Allow public read approved memories',
+        'Allow guest upload pending memory',
+        'Allow admin full access memories',
+        'Public can read approved wishes',
+        'Public read approved wishes',
+        'Admin can read all wishes',
+        'Public can submit wish',
+        'Admin can update or delete wishes',
+        'Admins manage wishes',
+        'Public view wedding-media',
+        'Public can view wedding-media',
+        'Admins manage wedding-media',
+        'Only authenticated admins can manage wedding-media',
+        'Public view wedding-memories',
+        'Public can view wedding-memories',
+        'Guests can upload to pending in wedding-memories',
+        'Admins can manage wedding-memories',
+      ];
+
+      for (const policyName of requiredDrops) {
+        expect(sql).toContain(`DROP POLICY IF EXISTS "${policyName}"`);
+      }
+    });
+
+    it('supabase_canonical_schema.sql enforces public.is_wedding_admin(auth.uid()) helper', () => {
+      const schemaPath = path.resolve(process.cwd(), 'supabase_canonical_schema.sql');
+      const sql = fs.readFileSync(schemaPath, 'utf8');
+
+      expect(sql).toContain('CREATE OR REPLACE FUNCTION public.is_wedding_admin');
+      expect(sql).toContain('SECURITY DEFINER');
+      expect(sql).toContain('is_wedding_admin(auth.uid())');
     });
   });
 });

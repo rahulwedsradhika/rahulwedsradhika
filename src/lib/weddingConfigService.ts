@@ -9,8 +9,8 @@
 import { DEFAULT_WEDDING_CONFIG } from '../config/wedding';
 import { WeddingConfig } from '../types/wedding';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
-import { isDevLocalModeAllowed } from './authService';
 import { resolveMediaUrl } from './mediaStorage';
+
 
 export const CONFIG_STORAGE_KEY = 'rahul_radhika_wedding_config_v3';
 export const BACKUP_STORAGE_KEY = 'rahul_radhika_wedding_config_backup_v3';
@@ -416,7 +416,7 @@ export async function saveCanonicalConfig(
 
       if (sessionError || !session) {
         // Not authenticated
-        if (isDevLocalModeAllowed()) {
+        if (Boolean(import.meta.env.DEV)) {
           return {
             success: localResult.success,
             target: localResult.success ? 'local_only' : 'none',
@@ -500,7 +500,7 @@ export async function saveCanonicalConfig(
       success: true,
       target: 'local_only',
       mode: 'local',
-      warning: isDevLocalModeAllowed()
+      warning: Boolean(import.meta.env.DEV)
         ? 'Running in local dev mode. Saved to browser storage.'
         : undefined,
       savedAt,

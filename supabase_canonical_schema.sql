@@ -36,7 +36,10 @@ BEGIN
 END;
 $$;
 
+-- Drop all legacy/obsolete policies on wedding_admins
 DROP POLICY IF EXISTS "Admins can view wedding_admins" ON public.wedding_admins;
+DROP POLICY IF EXISTS "Superadmins can manage wedding_admins" ON public.wedding_admins;
+
 CREATE POLICY "Admins can view wedding_admins"
   ON public.wedding_admins
   FOR SELECT
@@ -45,7 +48,6 @@ CREATE POLICY "Admins can view wedding_admins"
 
 
 -- 3. CANONICAL WEDDING CONFIGURATION TABLE
--- Stores the complete, versioned JSON configuration for the entire wedding website.
 CREATE TABLE IF NOT EXISTS public.wedding_config (
   id TEXT PRIMARY KEY DEFAULT 'canonical',
   version INTEGER NOT NULL DEFAULT 3,
@@ -56,9 +58,11 @@ CREATE TABLE IF NOT EXISTS public.wedding_config (
 
 ALTER TABLE public.wedding_config ENABLE ROW LEVEL SECURITY;
 
+-- Drop all legacy/obsolete policies on wedding_config
 DROP POLICY IF EXISTS "Public can read wedding_config" ON public.wedding_config;
 DROP POLICY IF EXISTS "Only authenticated admins can modify wedding_config" ON public.wedding_config;
 DROP POLICY IF EXISTS "Only authorized wedding admins can modify wedding_config" ON public.wedding_config;
+DROP POLICY IF EXISTS "Admins can update wedding_config" ON public.wedding_config;
 
 -- Public can read the published wedding configuration
 CREATE POLICY "Public can read wedding_config"
@@ -96,6 +100,7 @@ CREATE TABLE IF NOT EXISTS public.memories (
 
 ALTER TABLE public.memories ENABLE ROW LEVEL SECURITY;
 
+-- Drop all legacy/obsolete policies on memories
 DROP POLICY IF EXISTS "Public can view approved memories only" ON public.memories;
 DROP POLICY IF EXISTS "Authenticated admins can view all memories" ON public.memories;
 DROP POLICY IF EXISTS "Guests can upload pending memories" ON public.memories;
@@ -104,6 +109,10 @@ DROP POLICY IF EXISTS "Only authenticated admins can delete memories" ON public.
 DROP POLICY IF EXISTS "Authorized wedding admins can view all memories" ON public.memories;
 DROP POLICY IF EXISTS "Authorized wedding admins can update memories" ON public.memories;
 DROP POLICY IF EXISTS "Authorized wedding admins can delete memories" ON public.memories;
+DROP POLICY IF EXISTS "Admins full access to memories" ON public.memories;
+DROP POLICY IF EXISTS "Allow public read approved memories" ON public.memories;
+DROP POLICY IF EXISTS "Allow guest upload pending memory" ON public.memories;
+DROP POLICY IF EXISTS "Allow admin full access memories" ON public.memories;
 
 -- Public can view approved media only
 CREATE POLICY "Public can view approved memories only"
@@ -155,10 +164,15 @@ CREATE TABLE IF NOT EXISTS public.wishes (
 
 ALTER TABLE public.wishes ENABLE ROW LEVEL SECURITY;
 
+-- Drop all legacy/obsolete policies on wishes
 DROP POLICY IF EXISTS "Public can read approved wishes" ON public.wishes;
+DROP POLICY IF EXISTS "Public read approved wishes" ON public.wishes;
 DROP POLICY IF EXISTS "Admin can read all wishes" ON public.wishes;
 DROP POLICY IF EXISTS "Public can submit wish" ON public.wishes;
+DROP POLICY IF EXISTS "Public submit wishes" ON public.wishes;
 DROP POLICY IF EXISTS "Admin can update or delete wishes" ON public.wishes;
+DROP POLICY IF EXISTS "Admins manage wishes" ON public.wishes;
+DROP POLICY IF EXISTS "Admin can manage wishes" ON public.wishes;
 DROP POLICY IF EXISTS "Authorized wedding admins can read all wishes" ON public.wishes;
 DROP POLICY IF EXISTS "Authorized wedding admins can update or delete wishes" ON public.wishes;
 
@@ -216,7 +230,9 @@ ON CONFLICT (id) DO UPDATE SET
   allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/gif', 'video/mp4', 'video/webm', 'video/quicktime'];
 
 -- Storage Policies for 'wedding-media'
+DROP POLICY IF EXISTS "Public view wedding-media" ON storage.objects;
 DROP POLICY IF EXISTS "Public can view wedding-media" ON storage.objects;
+DROP POLICY IF EXISTS "Admins manage wedding-media" ON storage.objects;
 DROP POLICY IF EXISTS "Only authenticated admins can manage wedding-media" ON storage.objects;
 DROP POLICY IF EXISTS "Authorized wedding admins can manage wedding-media" ON storage.objects;
 
@@ -234,8 +250,11 @@ CREATE POLICY "Authorized wedding admins can manage wedding-media"
   WITH CHECK (bucket_id = 'wedding-media' AND public.is_wedding_admin(auth.uid()));
 
 -- Storage Policies for 'wedding-memories'
+DROP POLICY IF EXISTS "Public view wedding-memories" ON storage.objects;
 DROP POLICY IF EXISTS "Public can view wedding-memories" ON storage.objects;
+DROP POLICY IF EXISTS "Guests can upload to pending folder in wedding-memories" ON storage.objects;
 DROP POLICY IF EXISTS "Guests can upload to pending in wedding-memories" ON storage.objects;
+DROP POLICY IF EXISTS "Admins can manage wedding-memories" ON storage.objects;
 DROP POLICY IF EXISTS "Admins can update and delete in wedding-memories" ON storage.objects;
 DROP POLICY IF EXISTS "Authorized wedding admins can update and delete in wedding-memories" ON storage.objects;
 
