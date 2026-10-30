@@ -1,22 +1,32 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { WeddingConfig } from '../types/wedding';
 import { DEFAULT_WEDDING_CONFIG } from '../config/wedding';
 import {
   exportConfigAsJson,
-  localWeddingStorage,
   parseImportedConfigFile,
-} from '../lib/weddingConfigStorage';
+  loadCanonicalConfig,
+  saveCanonicalConfig,
+  resetCanonicalConfig,
+  PersistenceMode,
+} from '../lib/weddingConfigService';
+import { isSupabaseConfigured } from '../lib/supabaseClient';
 
-interface WeddingConfigContextValue {
+export interface WeddingConfigContextValue {
   config: WeddingConfig;
   updateConfig: (updater: (prev: WeddingConfig) => WeddingConfig) => Promise<boolean>;
   resetToDefaults: () => Promise<void>;
   exportConfig: () => void;
   importConfig: (file: File) => Promise<{ success: boolean; error?: string }>;
   isLocalMode: boolean;
+  persistenceMode: PersistenceMode;
+  isLoading: boolean;
   isSaving: boolean;
+  saveError: string | null;
+  saveWarning: string | null;
+  lastSavedAt: string | null;
   hasUnsavedChanges: boolean;
   saveChanges: () => Promise<boolean>;
+  refreshConfig: () => Promise<void>;
 }
 
 const WeddingConfigContext = createContext<WeddingConfigContextValue | null>(null);
@@ -26,26 +36,15 @@ export const WeddingConfigProvider: React.FC<{ children: React.ReactNode }> = ({
   const [persistedSnapshot, setPersistedSnapshot] = useState<string>(
     JSON.stringify(DEFAULT_WEDDING_CONFIG)
   );
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const isLocalMode = true; // Supabase not connected yet
+  const [persistenceMode, setPersistenceMode] = useState<PersistenceMode>('local');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveWarning, setSaveWarning] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 
-  // Load configuration on mount
-  useEffect(() => {
-    let mounted = true;
-    void localWeddingStorage.loadConfig().then((loaded) => {
-      if (mounted) {
-        setConfig(loaded);
-        setPersistedSnapshot(JSON.stringify(loaded));
-        applyThemeCssVariables(loaded);
-      }
-    });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  // Dynamically update document CSS variables whenever theme colors change
-  const applyThemeCssVariables = (cfg: WeddingConfig) => {
+  // Apply theme variables to document root
+  const applyThemeCssVariables = useCallback((cfg: WeddingConfig) => {
     if (typeof document === 'undefined') return;
     const root = document.documentElement;
     const colors = cfg.theme.colors;
@@ -60,7 +59,7 @@ export const WeddingConfigProvider: React.FC<{ children: React.ReactNode }> = ({
     root.style.setProperty('--color-text-secondary', colors.textSecondary);
     root.style.setProperty('--color-border-pink', colors.borderPink);
 
-    // Aliases
+    // CSS Aliases for component compatibility
     root.style.setProperty('--main-bg', colors.mainBg);
     root.style.setProperty('--secondary-bg', colors.secondaryBg);
     root.style.setProperty('--card-bg', colors.cardBg);
@@ -70,7 +69,30 @@ export const WeddingConfigProvider: React.FC<{ children: React.ReactNode }> = ({
     root.style.setProperty('--cream', colors.mainBg);
     root.style.setProperty('--cream-dark', colors.secondaryBg);
     root.style.setProperty('--charcoal', colors.textPrimary);
-  };
+  }, []);
+
+  const refreshConfig = useCallback(async () => {
+    setIsLoading(true);
+    setSaveError(null);
+    try {
+      const res = await loadCanonicalConfig();
+      setConfig(res.config);
+      setPersistedSnapshot(JSON.stringify(res.config));
+      setPersistenceMode(res.mode);
+      applyThemeCssVariables(res.config);
+      setLastSavedAt(new Date(res.config.lastUpdatedISO || Date.now()).toLocaleTimeString());
+    } catch (err) {
+      console.error('Failed to load wedding configuration:', err);
+      setSaveError(err instanceof Error ? err.message : 'Failed to load configuration');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [applyThemeCssVariables]);
+
+  // Initial load on mount
+  useEffect(() => {
+    void refreshConfig();
+  }, [refreshConfig]);
 
   const hasUnsavedChanges = JSON.stringify(config) !== persistedSnapshot;
 
@@ -78,31 +100,66 @@ export const WeddingConfigProvider: React.FC<{ children: React.ReactNode }> = ({
     const next = updater(config);
     setConfig(next);
     applyThemeCssVariables(next);
-    // Auto-save locally
+
     setIsSaving(true);
-    const success = await localWeddingStorage.saveConfig(next);
+    setSaveError(null);
+    setSaveWarning(null);
+
+    const result = await saveCanonicalConfig(next);
     setIsSaving(false);
-    if (success) {
+
+    if (result.success) {
       setPersistedSnapshot(JSON.stringify(next));
+      setPersistenceMode(result.mode);
+      setLastSavedAt(new Date().toLocaleTimeString());
+      if (result.warning) {
+        setSaveWarning(result.warning);
+      }
+      return true;
+    } else {
+      setSaveError(result.error || 'Failed to save configuration');
+      return false;
     }
-    return success;
   };
 
   const saveChanges = async (): Promise<boolean> => {
     setIsSaving(true);
-    const success = await localWeddingStorage.saveConfig(config);
+    setSaveError(null);
+    setSaveWarning(null);
+
+    const result = await saveCanonicalConfig(config);
     setIsSaving(false);
-    if (success) {
+
+    if (result.success) {
       setPersistedSnapshot(JSON.stringify(config));
+      setPersistenceMode(result.mode);
+      setLastSavedAt(new Date().toLocaleTimeString());
+      if (result.warning) {
+        setSaveWarning(result.warning);
+      }
+      return true;
+    } else {
+      setSaveError(result.error || 'Failed to save configuration');
+      return false;
     }
-    return success;
   };
 
   const resetToDefaults = async () => {
-    const defaults = await localWeddingStorage.resetConfig();
-    setConfig(defaults);
-    setPersistedSnapshot(JSON.stringify(defaults));
-    applyThemeCssVariables(defaults);
+    setIsSaving(true);
+    setSaveError(null);
+    setSaveWarning(null);
+    try {
+      const defaults = await resetCanonicalConfig();
+      setConfig(defaults);
+      setPersistedSnapshot(JSON.stringify(defaults));
+      setPersistenceMode(isSupabaseConfigured ? 'supabase' : 'local');
+      applyThemeCssVariables(defaults);
+      setLastSavedAt(new Date().toLocaleTimeString());
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Reset failed');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const exportConfig = () => {
@@ -110,18 +167,34 @@ export const WeddingConfigProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const importConfig = async (file: File): Promise<{ success: boolean; error?: string }> => {
+    setSaveError(null);
+    setSaveWarning(null);
     const result = await parseImportedConfigFile(file);
     if (!result.success || !result.config) {
+      setSaveError(result.error || 'Invalid configuration file');
       return { success: false, error: result.error };
     }
+
     const newConfig = result.config;
     setConfig(newConfig);
     applyThemeCssVariables(newConfig);
-    const saved = await localWeddingStorage.saveConfig(newConfig);
-    if (saved) {
+
+    setIsSaving(true);
+    const saveRes = await saveCanonicalConfig(newConfig);
+    setIsSaving(false);
+
+    if (saveRes.success) {
       setPersistedSnapshot(JSON.stringify(newConfig));
+      setPersistenceMode(saveRes.mode);
+      setLastSavedAt(new Date().toLocaleTimeString());
+      if (saveRes.warning) {
+        setSaveWarning(saveRes.warning);
+      }
+      return { success: true };
+    } else {
+      setSaveError(saveRes.error || 'Failed to persist imported configuration');
+      return { success: false, error: saveRes.error };
     }
-    return { success: true };
   };
 
   return (
@@ -132,10 +205,16 @@ export const WeddingConfigProvider: React.FC<{ children: React.ReactNode }> = ({
         resetToDefaults,
         exportConfig,
         importConfig,
-        isLocalMode,
+        isLocalMode: !isSupabaseConfigured || persistenceMode === 'local',
+        persistenceMode,
+        isLoading,
         isSaving,
+        saveError,
+        saveWarning,
+        lastSavedAt,
         hasUnsavedChanges,
         saveChanges,
+        refreshConfig,
       }}
     >
       {children}

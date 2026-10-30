@@ -5,14 +5,14 @@ A mobile-first, bilingual (English & Hindi) digital wedding invitation and celeb
 
 ---
 
-## 🌸 Key Highlights & Architecture
+## 🌸 Key Architecture & Highlights
 
-1. **Light-Pink Wedding Aesthetic & Modern Haryanvi Flavour**
+1. **Light-Pink Wedding Aesthetic & Cultural Flavour**
    - **Color Palette**:
      - Main Background: `#FFF4F6` (lightest blush/rose water)
      - Secondary Background: `#F8E3E9` (soft rose petal)
      - Card Background: `#FFFFFF`
-     - Dusty Rose / Accent: `#C76B84`
+     - Dusty Rose Accent: `#C76B84`
      - Royal Burgundy: `#702C43` (for high-contrast headings and primary actions)
      - Wedding Gold: `#D6AD62` (accents, ampersands, wax seal)
      - Text Primary: `#33252B` (exceeds WCAG 4.5:1 contrast)
@@ -21,33 +21,35 @@ A mobile-first, bilingual (English & Hindi) digital wedding invitation and celeb
    - Preserves cultural ceremony accents: Haldi yellow (`#E5A93C`), Mehendi green (`#4E7852`), Sangeet rose/gold, and Baraat royal burgundy.
 
 2. **Interactive 3D Wax-Sealed Envelope Intro**
-   - Immersive full-screen luxury envelope with tone-on-tone embossed floral and botanical motifs (wheat stalks, marigolds, lotus, jasmine).
-   - Molten metallic gold wax seal with couple monogram (`R & R` / `रा • रा`).
-   - Brittle wax crack audio impulse, haptic vibration feedback, 3D rotating flap revealing deep royal burgundy lining, and sliding luxury letter with falling marigold petals.
+   - Full-screen opening envelope with embossed botanical and traditional Haryanvi motifs (wheat stalks, marigolds, lotus).
+   - Metallic gold wax seal with couple monogram (`R & R` / `रा • रा`).
+   - Wax crack audio impulse, haptic feedback, 3D rotating flap revealing royal burgundy lining, and sliding letter with falling petals.
 
-3. **Robust RSVP System with True State Handling**
-   - Four distinct application states: `idle | submitting | confirmed | failed`.
-   - **No fake success**: Only stores confirmed status after Supabase successfully accepts the record.
-   - **Draft Auto-preservation**: Automatically saves in-progress form inputs in `wedding_rsvp_draft_v3` so guests never lose entered information on accidental refresh or mobile network drops.
-   - Graceful error banner with 1-tap "Try Again" retry action.
-   - Edit RSVP support with pre-filled previous responses.
+3. **Canonical Data Architecture & Supabase Integration**
+   - **Single Source of Truth**: All wedding details (couple identity, family elders, ceremony schedule, venues, theme, audio, and contacts) are governed by a canonical, versioned configuration schema.
+   - **Dual-Mode Persistence**:
+     - **Connected Mode**: When Supabase is configured with an active admin session, changes persist to the cloud `wedding_config` table and sync instantly across all visitor devices.
+     - **Local Offline Mode**: In development or offline mode, changes persist to `localStorage` with automated backups and graceful fallback to compiled defaults.
+   - **No Silent Failures**: The admin portal provides explicit indicators for cloud vs local mode, displays exact database errors, and prevents incomplete updates from corrupting valid data.
 
-4. **Authentic Invitation Downloads (PNG & PDF)**
-   - High-resolution (1080x1350) canvas card generator producing crisp official wedding cards or personalized cards with the guest's name.
-   - Client-side A4 printable PDF generator (`jsPDF`) formatted for easy printing and sharing on WhatsApp.
+4. **Robust Admin Security & Row Level Security (RLS)**
+   - **Supabase Auth**: Administrators sign in via email & password. Database writes are secured at the PostgreSQL layer using Row Level Security (`auth.role() = 'authenticated'`).
+   - **Guest Privacy**: Public visitors have read-only access to published configuration, approved memories, and approved wishes.
+   - **Public Client Safety**: Only anonymous public keys (`VITE_SUPABASE_ANON_KEY`) are exposed to the browser. Service-role keys are never included in the frontend.
 
-5. **Accurate iCalendar (.ics) Schedules & Timezone Support**
-   - Explicit `startISO` and `endISO` duration timestamps for every ceremony (Mehendi, Haldi, Sangeet, Baraat & Pheras, Reception).
-   - "Happening Today" badge computed using Indian Standard Time (`Asia/Kolkata`), preventing UTC date rollover mismatches for guests in India.
-   - Pre-configured 1-day and 2-hour reminder alarms for Google Calendar and Apple Calendar.
+5. **Media Storage Foundation**
+   - Direct integration with Supabase Storage buckets (`wedding-media` for hero/portraits/audio, `wedding-memories` for guest photos).
+   - Automated file size limits (15 MB for photos, 25 MB for audio) and MIME type validation.
+   - Resilient IndexedDB fallback during local development.
 
-6. **Secure Admin Dashboard**
-   - Multi-mode authentication:
-     - **Family Admin Passkey**: Configured via `VITE_ADMIN_PASSKEY` (defaults to `wedding2026`).
-     - **Supabase Auth**: Email and password login for registered family administrators.
-   - Live database metrics query (real counts for guests, vegetarian meals, stay, and pickup needs).
-   - Full CSV export with Unicode UTF-8 BOM encoding for Excel/Google Sheets compatibility.
-   - Admin-controlled custom background music upload (MP3/M4A), volume controls, and playback offset.
+6. **Authentic Invitation Downloads & iCalendar (.ics)**
+   - High-resolution (1080x1350) canvas card generator producing official wedding cards and personalized cards with guest names.
+   - Printable A4 PDF generation (`jsPDF`) for family distribution.
+   - Timezone-accurate iCalendar export (`.ics`) with Indian Standard Time (`Asia/Kolkata`) support and pre-configured calendar reminders.
+
+7. **Bilingual English & Hindi Integrity**
+   - Complete parity across all ceremony cards, venue directions, and family greetings.
+   - Independent language editing ensures modifying English text never overwrites Hindi translations, and vice versa.
 
 ---
 
@@ -56,16 +58,26 @@ A mobile-first, bilingual (English & Hindi) digital wedding invitation and celeb
 Create a `.env` file based on `.env.example`:
 
 ```bash
-# Supabase Configuration (anon public key only; never use service_role)
+# Supabase Configuration (anon public key only; never use service_role in client code)
 VITE_SUPABASE_URL="https://your-project.supabase.co"
 VITE_SUPABASE_ANON_KEY="your-anon-key"
 
-# Family Admin Passkey (used to unlock /admin dashboard)
+# Family Admin Development Passkey (offline / local preview only)
 VITE_ADMIN_PASSKEY="wedding2026"
 
-# Optional Google Maps API Key (if embedding custom Google Maps)
+# Optional Google Maps API Key
 VITE_GOOGLE_MAPS_KEY=""
 ```
+
+---
+
+## 🗄️ Database Provisioning
+
+To configure a new Supabase project:
+1. Open your Supabase Dashboard > **SQL Editor**.
+2. Run the migration script in `supabase_canonical_schema.sql`.
+3. Under **Authentication > Users**, create an administrator account.
+4. Sign in to `/admin` using your admin credentials.
 
 ---
 
@@ -75,7 +87,7 @@ VITE_GOOGLE_MAPS_KEY=""
 # Install dependencies
 npm install
 
-# Start development server
+# Start development server (port 3000)
 npm run dev
 
 # Run TypeScript checks
@@ -87,5 +99,5 @@ npm run build
 
 ---
 
-## 💖 Made with Love
-Built for **Rahul & Radhika** by Rohit. Ram Ram!
+## 💖 Built for Rahul & Radhika
+Celebration at Village Dobh, Rohtak, Haryana · 28 November 2026. Ram Ram!

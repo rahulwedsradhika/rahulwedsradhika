@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Check, Copy, ExternalLink, Navigation, Phone, Share2 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
@@ -12,31 +12,44 @@ import { SectionTitle } from '../ui/SectionTitle';
 export const VenuesSection: React.FC = () => {
   const { lang, t } = useLanguage();
   const { config } = useWeddingConfig();
-  const [searchParams] = useSearchParams();
-  const venues = (config.venues || []).filter((v) => v.visible !== false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Stable memoized visible venues list
+  const visibleVenues = useMemo(() => {
+    return (config.venues || []).filter((v) => v.visible !== false);
+  }, [config.venues]);
 
   const venueParam = searchParams.get('venue');
-  const [activeVenueId, setActiveVenueId] = useState<string>(() => {
-    if (venueParam && venues.some((v) => v.id === venueParam)) {
+
+  // Derive active venue ID directly from URL parameter or fallback gracefully to first visible venue
+  const activeVenueId = useMemo(() => {
+    if (venueParam && visibleVenues.some((v) => v.id === venueParam)) {
       return venueParam;
     }
-    return venues[0]?.id || 'haveli_dobh';
-  });
+    return visibleVenues[0]?.id || 'haveli_dobh';
+  }, [venueParam, visibleVenues]);
 
-  useEffect(() => {
-    if (venueParam && venues.some((v) => v.id === venueParam)) {
-      setActiveVenueId(venueParam);
-    }
-  }, [venueParam, venues]);
+  const activeVenue = useMemo(() => {
+    return visibleVenues.find((v) => v.id === activeVenueId) || visibleVenues[0];
+  }, [visibleVenues, activeVenueId]);
+
+  const handleSelectVenue = (venueId: string) => {
+    if (venueId === activeVenueId) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('venue', venueId);
+        return next;
+      },
+      { replace: false }
+    );
+  };
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const activeVenue =
-    venues.find((v) => v.id === activeVenueId) || venues[0];
-
   if (!activeVenue) return null;
 
-  const handleCopyAddress = async (venue: typeof venues[0]) => {
+  const handleCopyAddress = async (venue: typeof visibleVenues[0]) => {
     const textToCopy = `${venue.name[lang]}\n${venue.address[lang]}\n${venue.landmark[lang]}\nPlus Code: ${venue.plusCode}`;
     const ok = await copyToClipboard(textToCopy);
     if (ok) {
@@ -45,7 +58,7 @@ export const VenuesSection: React.FC = () => {
     }
   };
 
-  const handleShareOnWhatsApp = (venue: typeof venues[0]) => {
+  const handleShareOnWhatsApp = (venue: typeof visibleVenues[0]) => {
     const msg = `Ram Ram! Here is the location for ${venue.name[lang]} (${venue.landmark[lang]}): ${venue.mapsUrl}`;
     const url = getWhatsAppShareUrl(msg);
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -63,18 +76,18 @@ export const VenuesSection: React.FC = () => {
         </Reveal>
 
         {/* Venue Switcher Tabs */}
-        {venues.length > 1 && (
+        {visibleVenues.length > 1 && (
           <div className="flex justify-center mb-8">
             <div
               role="group"
               aria-label="Select venue"
               className="inline-flex rounded-full bg-[#F8E3E9] p-1 border border-[#EBD9DE]"
             >
-              {venues.map((venue) => (
+              {visibleVenues.map((venue) => (
                 <button
                   key={venue.id}
                   type="button"
-                  onClick={() => setActiveVenueId(venue.id)}
+                  onClick={() => handleSelectVenue(venue.id)}
                   aria-pressed={activeVenueId === venue.id}
                   className={`min-h-[40px] px-5 rounded-full text-xs sm:text-sm font-semibold transition-colors cursor-pointer ${
                     activeVenueId === venue.id

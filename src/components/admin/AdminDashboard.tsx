@@ -130,10 +130,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     isSaving,
     hasUnsavedChanges,
     saveChanges,
+    persistenceMode,
+    saveError,
+    saveWarning,
+    lastSavedAt,
   } = useWeddingConfig();
   const [activeTab, setActiveTab] = useState<AdminTabId>('overview');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [saveToast, setSaveToast] = useState(false);
+  const [saveToast, setSaveToast] = useState<{ show: boolean; msg: string }>({ show: false, msg: '' });
 
   // Admin Theme state: default to 'light' as requested, with localStorage persistence
   const [adminTheme, setAdminTheme] = useState<'light' | 'dark'>(() => {
@@ -161,8 +165,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleManualSave = async () => {
     const ok = await saveChanges();
     if (ok) {
-      setSaveToast(true);
-      setTimeout(() => setSaveToast(false), 2500);
+      const msg = persistenceMode === 'supabase' ? 'Saved to Cloud Database!' : 'Saved to Local Storage!';
+      setSaveToast({ show: true, msg });
+      setTimeout(() => setSaveToast({ show: false, msg: '' }), 3000);
     }
   };
 
@@ -272,22 +277,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* Right Action Buttons */}
         <div className="flex items-center gap-2 sm:gap-2.5">
           {/* Status Indicator */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-stone-100 dark:bg-stone-800 text-[11px] text-stone-600 dark:text-stone-300">
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-100 dark:bg-stone-800 text-[11px] text-stone-600 dark:text-stone-300">
             <span
               className={`w-2 h-2 rounded-full ${
                 isSaving
                   ? 'bg-amber-500 animate-ping'
                   : hasUnsavedChanges
                   ? 'bg-amber-500'
-                  : 'bg-emerald-500'
+                  : persistenceMode === 'supabase'
+                  ? 'bg-emerald-500'
+                  : 'bg-amber-400'
               }`}
             />
-            <span>
+            <span className="font-medium">
               {isSaving
                 ? 'Saving...'
                 : hasUnsavedChanges
                 ? 'Unsaved edits'
-                : 'Auto-saved locally'}
+                : persistenceMode === 'supabase'
+                ? `Cloud Synced (${lastSavedAt || 'Now'})`
+                : 'Local Mode (Browser Only)'}
             </span>
           </div>
 
@@ -319,10 +328,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <button
             onClick={handleManualSave}
             disabled={isSaving}
-            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#FFF4F6] hover:bg-[#F8E3E9] dark:bg-stone-800 dark:hover:bg-stone-700 text-[#702C43] dark:text-pink-300 border border-[#EBD9DE] dark:border-stone-700 rounded-xl text-xs font-semibold transition shadow-2xs"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#FFF4F6] hover:bg-[#F8E3E9] dark:bg-stone-800 dark:hover:bg-stone-700 text-[#702C43] dark:text-pink-300 border border-[#EBD9DE] dark:border-stone-700 rounded-xl text-xs font-semibold transition shadow-2xs cursor-pointer"
           >
-            {saveToast ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Save className="w-3.5 h-3.5" />}
-            {saveToast ? 'Saved!' : 'Save'}
+            {saveToast.show ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Save className="w-3.5 h-3.5" />}
+            {saveToast.show ? saveToast.msg : 'Save'}
           </button>
 
           <button
@@ -400,7 +409,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="p-4 border-t border-[#EBD9DE] dark:border-stone-800 bg-[#FFF8FA]/60 dark:bg-stone-900/50">
             <div className="flex items-center justify-between text-[11px] text-[#765F68] dark:text-stone-400">
               <span>Schema v{config.version || 3}</span>
-              <span className="text-[#702C43] dark:text-pink-300 font-medium">Local-first mode</span>
+              <span className={`font-semibold ${persistenceMode === 'supabase' ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`}>
+                {persistenceMode === 'supabase' ? 'Cloud Synced' : 'Local Storage Mode'}
+              </span>
             </div>
           </div>
         </aside>
@@ -414,7 +425,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {/* Main Tab View Canvas */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-[#FFF8FA] dark:bg-stone-950">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-[#FFF8FA] dark:bg-stone-950 space-y-4">
+          {saveError && (
+            <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-red-800 dark:text-red-200 text-xs flex items-center justify-between">
+              <span><strong>Save Error:</strong> {saveError}</span>
+            </div>
+          )}
+
+          {saveWarning && (
+            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-200 text-xs">
+              <strong>Notice:</strong> {saveWarning}
+            </div>
+          )}
+
           {renderActiveTabContent()}
         </main>
       </div>

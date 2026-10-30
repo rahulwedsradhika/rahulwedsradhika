@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { Volume2, VolumeX, Phone, X } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
@@ -12,8 +12,13 @@ import { MultiTabNavigation } from '../../components/layout/MultiTabNavigation';
 import { EntryScreen } from '../../components/layout/EntryScreen';
 import { AdminModal } from '../../components/sections/AdminModal';
 
+export interface AppOutletContext {
+  burstTrigger: number;
+}
+
 export const AppLayout: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { lang, setLang, t } = useLanguage();
   const { config } = useWeddingConfig();
   const { isMuted, toggleMute, playDholHit, unlockAndStart } = useAudio();
@@ -70,6 +75,7 @@ export const AppLayout: React.FC = () => {
       // Ignore
     }
     setShowEntry(true);
+    navigate('/');
     window.scrollTo({ top: 0, behavior: 'instant' });
   };
 

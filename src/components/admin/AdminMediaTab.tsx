@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWeddingConfig } from '../../context/WeddingConfigContext';
 import { indexedDbMedia, StoredMediaItem } from '../../lib/indexedDbMedia';
+import { uploadWeddingMedia } from '../../lib/mediaStorage';
 import { Image as ImageIcon, Upload, Trash2, RefreshCw, Check, AlertCircle, Eye } from 'lucide-react';
 
 export const AdminMediaTab: React.FC = () => {
@@ -32,36 +33,35 @@ export const AdminMediaTab: React.FC = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Validate size (max 8MB for local client performance)
-    if (file.size > 8 * 1024 * 1024) {
-      alert('File size exceeds 8MB. Please choose a photo smaller than 8MB for smooth mobile loading.');
-      return;
-    }
-
     try {
-      setUploadStatus('Storing photo in local offline database...');
-      const saved = await indexedDbMedia.saveMedia(
-        `media_${activeSlot}_${Date.now()}`,
-        file,
-        activeSlot,
-        file.name
-      );
+      setUploadStatus('Processing upload...');
+      const category = activeSlot === 'venueCourtyard' ? 'venue' : 'couple';
+      const result = await uploadWeddingMedia(file, category);
+
+      if (!result.success) {
+        alert(result.error || 'Failed to upload photo.');
+        return;
+      }
 
       // Update config media path
       await updateConfig((prev) => ({
         ...prev,
         media: {
           ...prev.media,
-          [activeSlot]: saved.url,
+          [activeSlot]: result.url,
         },
       }));
 
-      setUploadStatus('Photo updated successfully!');
-      setTimeout(() => setUploadStatus(null), 3000);
+      setUploadStatus(
+        result.isLocalOnly
+          ? 'Photo saved locally in browser database.'
+          : 'Photo uploaded to Supabase Cloud Storage!'
+      );
+      setTimeout(() => setUploadStatus(null), 3500);
       await loadMedia();
     } catch (err) {
       console.error('Upload failed:', err);
-      alert('Failed to store image in IndexedDB. Please try another image.');
+      alert('Failed to store image. Please try another image.');
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
