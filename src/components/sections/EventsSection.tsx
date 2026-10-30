@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { CalendarPlus, ChevronDown, ChevronUp, MapPin, Sparkles } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useWeddingConfig } from '../../context/WeddingConfigContext';
@@ -11,6 +12,7 @@ import { SectionTitle } from '../ui/SectionTitle';
 type FilterType = 'all' | 'day1' | 'day2';
 
 export const EventsSection: React.FC = () => {
+  const navigate = useNavigate();
   const { lang, t } = useLanguage();
   const { config } = useWeddingConfig();
   const [filter, setFilter] = useState<FilterType>('all');
@@ -64,13 +66,7 @@ export const EventsSection: React.FC = () => {
   };
 
   const handleJumpToVenue = (venueId: string) => {
-    const el = document.getElementById(`venue-${venueId}`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    } else {
-      const venueSection = document.getElementById('venue');
-      if (venueSection) venueSection.scrollIntoView({ behavior: 'smooth' });
-    }
+    navigate(`/venues?venue=${venueId}`);
   };
 
   return (

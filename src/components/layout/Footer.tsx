@@ -1,15 +1,17 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
-import { RotateCcw, Volume2, VolumeX } from 'lucide-react';
-import { WEDDING_CONFIG } from '../../config/wedding';
+import { RotateCcw, Volume2, VolumeX, Shield } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
+import { useWeddingConfig } from '../../context/WeddingConfigContext';
+import { getVisibleNavItems } from '../../config/navigation';
 import { PhulkariDivider } from '../ui/PhulkariDivider';
 import { RoyalCrestLogo } from '../common/RoyalCrestLogo';
 
 interface FooterProps {
   isMuted: boolean;
   onToggleMute: () => void;
-  onOpenAdmin: () => void;
+  onOpenAdmin?: () => void;
   onReplayInvite?: () => void;
 }
 
@@ -20,7 +22,10 @@ export const Footer: React.FC<FooterProps> = ({
   onReplayInvite,
 }) => {
   const { lang, setLang, t } = useLanguage();
+  const { config } = useWeddingConfig();
   const prefersReducedMotion = useReducedMotion();
+
+  const navItems = getVisibleNavItems(config.navigation, 'all');
 
   const handleBackToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -44,6 +49,22 @@ export const Footer: React.FC<FooterProps> = ({
         <p className="font-heading text-base sm:text-lg italic text-[#765F68] mb-6">
           {t('footer_blessing_line')}
         </p>
+
+        {/* Navigation Quick Links */}
+        <nav aria-label="Footer Navigation" className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mb-6 text-xs sm:text-sm font-semibold text-[#702C43]">
+          {navItems.map((item) => {
+            const label = lang === 'hi' ? item.titleHi : item.titleEn;
+            return (
+              <Link
+                key={item.id}
+                to={item.path}
+                className="hover:underline underline-offset-4 transition-colors py-1"
+              >
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
 
         {/* Action controls row */}
         <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 text-xs font-semibold text-[#765F68] mb-8">
@@ -92,16 +113,27 @@ export const Footer: React.FC<FooterProps> = ({
 
           <span aria-hidden="true" className="text-[#EBD9DE]">·</span>
 
-          <button
-            type="button"
-            onClick={onOpenAdmin}
-            className="min-h-[44px] px-3 py-2 text-[#765F68]/70 hover:text-[#702C43] cursor-pointer transition-colors"
-          >
-            Admin
-          </button>
+          {onOpenAdmin ? (
+            <button
+              type="button"
+              onClick={onOpenAdmin}
+              className="min-h-[44px] px-3 py-2 inline-flex items-center gap-1 text-[#765F68]/70 hover:text-[#702C43] cursor-pointer transition-colors"
+            >
+              <Shield className="w-3 h-3" />
+              <span>Admin</span>
+            </button>
+          ) : (
+            <Link
+              to="/admin"
+              className="min-h-[44px] px-3 py-2 inline-flex items-center gap-1 text-[#765F68]/70 hover:text-[#702C43] cursor-pointer transition-colors"
+            >
+              <Shield className="w-3 h-3" />
+              <span>Admin</span>
+            </Link>
+          )}
         </div>
 
-        {/* Signature: Made with ❤️ by Rohit with pulsing heart */}
+        {/* Signature */}
         <div className="flex items-center justify-center gap-1.5 text-xs text-[#765F68]">
           <span>{lang === 'hi' ? 'रोहित द्वारा' : 'Made with'}</span>
           <motion.span

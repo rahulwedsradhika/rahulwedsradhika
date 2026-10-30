@@ -1,9 +1,11 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   href?: string;
+  to?: string;
   target?: string;
   rel?: string;
   children: React.ReactNode;
@@ -14,6 +16,7 @@ export const Button: React.FC<ButtonProps> = ({
   size = 'md',
   className = '',
   href,
+  to,
   target,
   rel,
   children,
@@ -47,9 +50,20 @@ export const Button: React.FC<ButtonProps> = ({
 
   const combinedClasses = `${baseClasses} ${sizeClasses} ${variantClasses} ${className}`;
 
-  if (href) {
+  const destination = to || href;
+
+  if (destination) {
+    const isInternal = destination.startsWith('/') && !destination.startsWith('//');
+    if (isInternal && !target) {
+      return (
+        <Link to={destination} className={combinedClasses}>
+          {children}
+        </Link>
+      );
+    }
+
     return (
-      <a href={href} target={target} rel={rel} className={combinedClasses}>
+      <a href={destination} target={target} rel={rel} className={combinedClasses}>
         {children}
       </a>
     );
@@ -61,3 +75,4 @@ export const Button: React.FC<ButtonProps> = ({
     </button>
   );
 };
+

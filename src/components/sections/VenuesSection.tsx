@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Check, Copy, ExternalLink, Navigation, Phone, Share2 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useWeddingConfig } from '../../context/WeddingConfigContext';
@@ -11,9 +12,23 @@ import { SectionTitle } from '../ui/SectionTitle';
 export const VenuesSection: React.FC = () => {
   const { lang, t } = useLanguage();
   const { config } = useWeddingConfig();
+  const [searchParams] = useSearchParams();
   const venues = (config.venues || []).filter((v) => v.visible !== false);
 
-  const [activeVenueId, setActiveVenueId] = useState<string>(venues[0]?.id || 'haveli_dobh');
+  const venueParam = searchParams.get('venue');
+  const [activeVenueId, setActiveVenueId] = useState<string>(() => {
+    if (venueParam && venues.some((v) => v.id === venueParam)) {
+      return venueParam;
+    }
+    return venues[0]?.id || 'haveli_dobh';
+  });
+
+  useEffect(() => {
+    if (venueParam && venues.some((v) => v.id === venueParam)) {
+      setActiveVenueId(venueParam);
+    }
+  }, [venueParam, venues]);
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const activeVenue =

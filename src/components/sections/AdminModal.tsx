@@ -58,7 +58,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
     setAuthError(null);
 
     const entered = passkey.trim();
-    if (entered === configuredPasskey || entered === 'wedding2026' || entered === '1128') {
+    if (entered && entered === configuredPasskey) {
       setIsUnlocked(true);
       try {
         sessionStorage.setItem('wedding_admin_authenticated', 'true');
@@ -66,7 +66,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
         // Ignore
       }
     } else {
-      setAuthError('Incorrect passkey. Please verify with the couple or check VITE_ADMIN_PASSKEY.');
+      setAuthError('Incorrect passkey. Please verify with the couple or check your administrator passkey.');
     }
   };
 

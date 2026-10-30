@@ -160,21 +160,21 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ burstTrigger = 0 }) =>
           className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-xs sm:max-w-md mx-auto"
         >
           <Button
-            href="#events"
+            to="/events"
             variant="primary"
             size="lg"
             className="w-full sm:w-auto min-w-[170px] shadow-[0_8px_20px_-4px_rgba(112,44,67,0.25)] hover:shadow-[0_12px_24px_-4px_rgba(112,44,67,0.32)]"
           >
-            {t('nav_events')}
+            {lang === 'hi' ? 'समारोह' : 'Events'}
           </Button>
 
           <Button
-            href="#venue"
+            to="/venues"
             variant="secondary"
             size="lg"
             className="w-full sm:w-auto min-w-[170px]"
           >
-            {t('nav_venues')}
+            {lang === 'hi' ? 'स्थान' : 'Venues'}
           </Button>
         </motion.div>
       </div>
