@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { isSupabaseConfigured } from '../../lib/supabaseClient';
-import { Shield, Database, Copy, Check, Lock, Users } from 'lucide-react';
+import { Shield, Database, Copy, Check, Lock, Users, LockKeyhole } from 'lucide-react';
 
 const SQL_MIGRATION_SCRIPT = `-- ==============================================================================
 -- RAHUL WEDS RADHIKA: CANONICAL PRODUCTION DATABASE SCHEMA & HARDENED RLS POLICIES
@@ -11,7 +11,7 @@ const SQL_MIGRATION_SCRIPT = `-- ===============================================
 -- 1. EXTENSIONS
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. WEDDING ADMINS ALLOWLIST TABLE & SECURITY DEFINER HELPER
+-- 2. WEDDING ADMINS ALLOWLIST TABLE & HARDENED SECURITY DEFINER HELPER
 CREATE TABLE IF NOT EXISTS public.wedding_admins (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   role TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('admin', 'superadmin')),
@@ -25,7 +25,7 @@ CREATE OR REPLACE FUNCTION public.is_wedding_admin(user_id UUID DEFAULT auth.uid
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, auth
+SET search_path = public, pg_temp
 AS $$
 BEGIN
   IF user_id IS NULL THEN
@@ -33,22 +33,37 @@ BEGIN
   END IF;
 
   RETURN EXISTS (
-    SELECT 1 FROM public.wedding_admins WHERE wedding_admins.user_id = is_wedding_admin.user_id
+    SELECT 1 FROM public.wedding_admins WHERE public.wedding_admins.user_id = is_wedding_admin.user_id
   ) OR (
     COALESCE((auth.jwt() -> 'app_metadata' ->> 'role'), '') IN ('admin', 'superadmin')
   );
 END;
 $$;
 
+-- Revoke default EXECUTE privileges from PUBLIC and anon to restrict direct invocation
+REVOKE EXECUTE ON FUNCTION public.is_wedding_admin(UUID) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.is_wedding_admin(UUID) FROM anon;
+GRANT EXECUTE ON FUNCTION public.is_wedding_admin(UUID) TO authenticated, service_role;
+
 -- Drop all legacy/obsolete policies on wedding_admins
 DROP POLICY IF EXISTS "Admins can view wedding_admins" ON public.wedding_admins;
 DROP POLICY IF EXISTS "Superadmins can manage wedding_admins" ON public.wedding_admins;
+DROP POLICY IF EXISTS "Admins manage wedding_admins" ON public.wedding_admins;
 
+-- Verified admins can view the admin allowlist
 CREATE POLICY "Admins can view wedding_admins"
   ON public.wedding_admins
   FOR SELECT
   TO authenticated
   USING (public.is_wedding_admin(auth.uid()));
+
+-- Only verified admins can manage (insert/update/delete) the admin allowlist
+CREATE POLICY "Admins manage wedding_admins"
+  ON public.wedding_admins
+  FOR ALL
+  TO authenticated
+  USING (public.is_wedding_admin(auth.uid()))
+  WITH CHECK (public.is_wedding_admin(auth.uid()));
 
 
 -- 3. CANONICAL WEDDING CONFIGURATION TABLE
@@ -206,7 +221,8 @@ CREATE POLICY "Authorized wedding admins can update or delete wishes"
   WITH CHECK (public.is_wedding_admin(auth.uid()));
 
 
--- 6. STORAGE BUCKETS CONFIGURATION
+-- 6. STORAGE BUCKETS CONFIGURATION (HARDENED PRIVACY)
+-- Official website media assets & audio (Public bucket)
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
   'wedding-media',
@@ -220,16 +236,17 @@ ON CONFLICT (id) DO UPDATE SET
   file_size_limit = 26214400,
   allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/gif', 'audio/mpeg', 'audio/mp3', 'audio/m4a', 'audio/x-m4a', 'audio/wav', 'audio/ogg'];
 
+-- Shared guest memories gallery (PRIVATE bucket - protecting pending uploads)
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
   'wedding-memories',
   'wedding-memories',
-  true,
+  false, -- PRIVATE BUCKET: Pending media is NOT public!
   15728640, -- 15 MB limit
   ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/gif', 'video/mp4', 'video/webm', 'video/quicktime']
 )
 ON CONFLICT (id) DO UPDATE SET
-  public = true,
+  public = false,
   file_size_limit = 15728640,
   allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/gif', 'video/mp4', 'video/webm', 'video/quicktime'];
 
@@ -256,18 +273,25 @@ CREATE POLICY "Authorized wedding admins can manage wedding-media"
 -- Storage Policies for 'wedding-memories'
 DROP POLICY IF EXISTS "Public view wedding-memories" ON storage.objects;
 DROP POLICY IF EXISTS "Public can view wedding-memories" ON storage.objects;
+DROP POLICY IF EXISTS "Public can view approved wedding-memories" ON storage.objects;
 DROP POLICY IF EXISTS "Guests can upload to pending folder in wedding-memories" ON storage.objects;
 DROP POLICY IF EXISTS "Guests can upload to pending in wedding-memories" ON storage.objects;
 DROP POLICY IF EXISTS "Admins can manage wedding-memories" ON storage.objects;
 DROP POLICY IF EXISTS "Admins can update and delete in wedding-memories" ON storage.objects;
 DROP POLICY IF EXISTS "Authorized wedding admins can update and delete in wedding-memories" ON storage.objects;
+DROP POLICY IF EXISTS "Authorized wedding admins can manage wedding-memories" ON storage.objects;
 
-CREATE POLICY "Public can view wedding-memories"
+-- Public can ONLY view approved media in wedding-memories
+CREATE POLICY "Public can view approved wedding-memories"
   ON storage.objects
   FOR SELECT
   TO anon, authenticated
-  USING (bucket_id = 'wedding-memories');
+  USING (
+    bucket_id = 'wedding-memories' AND
+    (storage.foldername(name))[1] = 'approved'
+  );
 
+-- Guests can upload exclusively to the pending folder in wedding-memories
 CREATE POLICY "Guests can upload to pending in wedding-memories"
   ON storage.objects
   FOR INSERT
@@ -277,12 +301,29 @@ CREATE POLICY "Guests can upload to pending in wedding-memories"
     (storage.foldername(name))[1] = 'pending'
   );
 
-CREATE POLICY "Authorized wedding admins can update and delete in wedding-memories"
+-- Authorized admins have full management permissions over wedding-memories
+CREATE POLICY "Authorized wedding admins can manage wedding-memories"
   ON storage.objects
   FOR ALL
   TO authenticated
   USING (bucket_id = 'wedding-memories' AND public.is_wedding_admin(auth.uid()))
   WITH CHECK (bucket_id = 'wedding-memories' AND public.is_wedding_admin(auth.uid()));
+
+
+-- 7. RLS POLICY AUDIT & VERIFICATION QUERY
+-- Run this in Supabase SQL Editor to verify all active Row Level Security policies
+SELECT
+  schemaname,
+  tablename,
+  policyname,
+  permissive,
+  roles,
+  cmd,
+  qual AS using_expression,
+  with_check AS with_check_expression
+FROM pg_policies
+WHERE schemaname IN ('public', 'storage')
+ORDER BY schemaname, tablename, policyname;
 `;
 
 export const AdminSecurityTab: React.FC = () => {

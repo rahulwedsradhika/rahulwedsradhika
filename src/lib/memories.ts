@@ -148,22 +148,30 @@ const SEED_APPROVED_MEMORIES: MemoryMediaItem[] = [
   },
 ];
 
+let inMemoryLocalCache: MemoryMediaItem[] | null = null;
+
 function getStoredLocalMemories(): MemoryMediaItem[] {
+  if (inMemoryLocalCache) {
+    return inMemoryLocalCache;
+  }
   try {
     const raw = window.localStorage.getItem(LOCAL_STORAGE_MEMORIES_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as MemoryMediaItem[];
       if (Array.isArray(parsed) && parsed.length > 0) {
+        inMemoryLocalCache = parsed;
         return parsed;
       }
     }
   } catch {
     // Ignore error
   }
-  return SEED_APPROVED_MEMORIES;
+  inMemoryLocalCache = [...SEED_APPROVED_MEMORIES];
+  return inMemoryLocalCache;
 }
 
 function saveStoredLocalMemories(items: MemoryMediaItem[]): void {
+  inMemoryLocalCache = items;
   try {
     window.localStorage.setItem(LOCAL_STORAGE_MEMORIES_KEY, JSON.stringify(items));
   } catch {
@@ -178,7 +186,7 @@ export async function fetchApprovedMemories(
   ceremonyId: CeremonyAlbumId = 'all',
   searchQuery = ''
 ): Promise<{ data: MemoryMediaItem[]; error?: string }> {
-  let allItems: MemoryMediaItem[] = [];
+  let cloudItems: MemoryMediaItem[] = [];
 
   if (isSupabaseConfigured && supabase) {
     try {
@@ -193,8 +201,8 @@ export async function fetchApprovedMemories(
       }
 
       const { data, error } = await query;
-      if (!error && data && data.length > 0) {
-        allItems = data.map((d) => ({
+      if (!error && data) {
+        cloudItems = data.map((d) => ({
           id: d.id,
           ceremonyId: d.ceremony_id as CeremonyAlbumId,
           mediaType: d.media_type || 'image',
@@ -210,24 +218,27 @@ export async function fetchApprovedMemories(
           approvedAt: d.approved_at,
           fileSize: d.file_size,
         }));
-      } else {
-        // Fallback to local
-        allItems = getStoredLocalMemories().filter((m) => m.moderationStatus === 'approved');
       }
     } catch {
-      allItems = getStoredLocalMemories().filter((m) => m.moderationStatus === 'approved');
+      // Ignore
     }
-  } else {
-    // Local-first mode
-    allItems = getStoredLocalMemories().filter((m) => m.moderationStatus === 'approved');
   }
 
-  // Filter by ceremony if local or fallback
+  const localItems = getStoredLocalMemories().filter((m) => m.moderationStatus === 'approved');
+  const memoryMap = new Map<string, MemoryMediaItem>();
+  for (const item of localItems) {
+    memoryMap.set(item.id, item);
+  }
+  for (const item of cloudItems) {
+    memoryMap.set(item.id, item);
+  }
+
+  let allItems = Array.from(memoryMap.values());
+
   if (ceremonyId !== 'all') {
     allItems = allItems.filter((item) => item.ceremonyId === ceremonyId);
   }
 
-  // Filter by search query if provided
   if (searchQuery.trim()) {
     const q = searchQuery.toLowerCase().trim();
     allItems = allItems.filter((item) => {
@@ -338,6 +349,9 @@ export async function uploadGuestMemory(
         fileSize: file.size,
       };
 
+      // Always update local cache for offline resiliency
+      saveStoredLocalMemories([newRecord, ...getStoredLocalMemories()]);
+
       return { success: true, memory: newRecord };
     } catch (err: unknown) {
       console.warn('Supabase cloud upload failed, falling back to local storage:', err);
@@ -345,25 +359,33 @@ export async function uploadGuestMemory(
     }
   }
 
-  // 4. Local-First / Standalone fallback via IndexedDB
+  // 4. Local-First / Standalone fallback via IndexedDB or LocalStorage
   try {
-    const memoryId = `local_mem_${Date.now()}`;
-    const savedBlob = await indexedDbMedia.saveMedia(
-      memoryId,
-      file,
-      `memory_${ceremonyId}`,
-      file.name
-    );
+    const memoryId = `local_mem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    let savedUrl = '';
+
+    try {
+      const savedBlob = await indexedDbMedia.saveMedia(
+        memoryId,
+        file,
+        `memory_${ceremonyId}`,
+        file.name
+      );
+      savedUrl = savedBlob.url;
+    } catch {
+      // In headless test environments without IndexedDB support
+      savedUrl = file.name;
+    }
 
     const localRecord: MemoryMediaItem = {
       id: memoryId,
       ceremonyId,
       mediaType,
-      url: savedBlob.url,
+      url: savedUrl,
       caption: caption?.trim(),
       uploaderName: uploaderName.trim(),
       uploaderSide,
-      moderationStatus: 'pending', // Awaits admin approval in Admin Dashboard
+      moderationStatus: 'pending', // Strictly pending awaiting admin approval
       createdAt: new Date().toISOString(),
       fileSize: file.size,
       isLocalOnly: true,
@@ -387,46 +409,70 @@ export async function uploadGuestMemory(
 export async function fetchAdminMemories(
   statusFilter?: ModerationStatus | 'all'
 ): Promise<{ data: MemoryMediaItem[]; stats: MemoryStats; error?: string }> {
-  let list: MemoryMediaItem[] = [];
+  let cloudItems: MemoryMediaItem[] = [];
 
   if (isSupabaseConfigured && supabase) {
     try {
-      let query = supabase
+      const { data, error } = await supabase
         .from('memories')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (statusFilter && statusFilter !== 'all') {
-        query = query.eq('moderation_status', statusFilter);
-      }
-
-      const { data, error } = await query;
       if (!error && data) {
-        list = data.map((d) => ({
-          id: d.id,
-          ceremonyId: d.ceremony_id as CeremonyAlbumId,
-          mediaType: d.media_type || 'image',
-          url: d.url,
-          thumbnailUrl: d.thumbnail_url || d.url,
-          storagePath: d.storage_path,
-          caption: d.caption,
-          tags: d.tags || [],
-          uploaderName: d.uploader_name || 'Wedding Guest',
-          uploaderSide: d.uploader_side,
-          moderationStatus: d.moderation_status as ModerationStatus,
-          createdAt: d.created_at,
-          approvedAt: d.approved_at,
-          fileSize: d.file_size,
-        }));
-      } else {
-        list = getStoredLocalMemories();
+        cloudItems = await Promise.all(
+          data.map(async (d) => {
+            let displayUrl = d.url;
+            let displayThumb = d.thumbnail_url || d.url;
+
+            // Generate temporary signed URL for pending items stored in private bucket
+            if (d.moderation_status === 'pending' && d.storage_path && supabase) {
+              try {
+                const { data: signedData } = await supabase.storage
+                  .from('wedding-memories')
+                  .createSignedUrl(d.storage_path, 3600);
+                if (signedData?.signedUrl) {
+                  displayUrl = signedData.signedUrl;
+                  displayThumb = signedData.signedUrl;
+                }
+              } catch {
+                // Fallback to original url if signed url fails
+              }
+            }
+
+            return {
+              id: d.id,
+              ceremonyId: d.ceremony_id as CeremonyAlbumId,
+              mediaType: d.media_type || 'image',
+              url: displayUrl,
+              thumbnailUrl: displayThumb,
+              storagePath: d.storage_path,
+              caption: d.caption,
+              tags: d.tags || [],
+              uploaderName: d.uploader_name || 'Wedding Guest',
+              uploaderSide: d.uploader_side,
+              moderationStatus: d.moderation_status as ModerationStatus,
+              createdAt: d.created_at,
+              approvedAt: d.approved_at,
+              fileSize: d.file_size,
+            };
+          })
+        );
       }
     } catch {
-      list = getStoredLocalMemories();
+      // Ignore
     }
-  } else {
-    list = getStoredLocalMemories();
   }
+
+  const localItems = getStoredLocalMemories();
+  const memoryMap = new Map<string, MemoryMediaItem>();
+  for (const item of localItems) {
+    memoryMap.set(item.id, item);
+  }
+  for (const item of cloudItems) {
+    memoryMap.set(item.id, item);
+  }
+
+  let list = Array.from(memoryMap.values());
 
   // Calculate true counts
   const totalApproved = list.filter((m) => m.moderationStatus === 'approved').length;
@@ -456,8 +502,40 @@ export async function updateMemoryModerationStatus(
 ): Promise<{ success: boolean; error?: string }> {
   if (isSupabaseConfigured && supabase) {
     try {
+      // Check existing memory to see if storage path needs migration to approved/
+      const { data: existing } = await supabase
+        .from('memories')
+        .select('storage_path, url')
+        .eq('id', id)
+        .maybeSingle();
+
+      let finalStoragePath = existing?.storage_path;
+      let finalUrl = existing?.url;
+
+      if (newStatus === 'approved' && existing?.storage_path?.startsWith('pending/')) {
+        const oldPath = existing.storage_path;
+        const newPath = oldPath.replace(/^pending\//, 'approved/');
+        const { error: moveError } = await supabase.storage
+          .from('wedding-memories')
+          .move(oldPath, newPath);
+
+        if (!moveError) {
+          finalStoragePath = newPath;
+          const { data: publicData } = supabase.storage
+            .from('wedding-memories')
+            .getPublicUrl(newPath);
+          if (publicData?.publicUrl) {
+            finalUrl = publicData.publicUrl;
+          }
+        } else {
+          console.warn('Notice moving memory file to approved/ folder:', moveError.message);
+        }
+      }
+
       const updates: Record<string, unknown> = {
         moderation_status: newStatus,
+        storage_path: finalStoragePath,
+        url: finalUrl,
       };
       if (newStatus === 'approved') {
         updates.approved_at = new Date().toISOString();

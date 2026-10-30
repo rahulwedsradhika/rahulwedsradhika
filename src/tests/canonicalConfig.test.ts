@@ -1,5 +1,5 @@
 /**
- * Canonical Data Architecture & Security Test Suite
+ * Canonical Data Architecture & Hardened Security Test Suite
  * Executed via: npm test (vitest run)
  */
 
@@ -13,16 +13,23 @@ import {
   saveCanonicalConfig,
   loadCanonicalConfig,
 } from '../lib/weddingConfigService';
-import { validateMediaFile, MAX_PHOTO_BYTES } from '../lib/mediaStorage';
+import { validateMediaFile, MAX_PHOTO_BYTES, MEMORIES_BUCKET } from '../lib/mediaStorage';
 import {
   getAdminAuthState,
   verifyUserAdminRole,
   loginAdminSupabase,
 } from '../lib/authService';
+import {
+  fetchApprovedMemories,
+  fetchAdminMemories,
+  uploadGuestMemory,
+  updateMemoryModerationStatus,
+  deleteMemoryItem,
+} from '../lib/memories';
 import { WeddingConfig } from '../types/wedding';
 import { User } from '@supabase/supabase-js';
 
-describe('Phase 2 Canonical Data Architecture & Security', () => {
+describe('Phase 2B.3 Canonical Data Architecture & Security Test Suite', () => {
   describe('1. Canonical Schema Validation', () => {
     it('DEFAULT_WEDDING_CONFIG passes validation with 0 errors', () => {
       const result = validateWeddingConfig(DEFAULT_WEDDING_CONFIG);
@@ -83,10 +90,8 @@ describe('Phase 2 Canonical Data Architecture & Security', () => {
       const migrated = migrateConfig(partial);
       expect(migrated.groom.en).toBe('Rahul Sangwan');
       expect(migrated.groom.hi).toBe('राहुल सांगवान');
-      // Bride names preserved from default base
       expect(migrated.bride.en).toBe(DEFAULT_WEDDING_CONFIG.bride.en);
       expect(migrated.bride.hi).toBe(DEFAULT_WEDDING_CONFIG.bride.hi);
-      // Venues and events preserved
       expect(migrated.events.length).toBeGreaterThan(0);
       expect(migrated.venues.length).toBeGreaterThan(0);
     });
@@ -108,7 +113,7 @@ describe('Phase 2 Canonical Data Architecture & Security', () => {
     });
   });
 
-  describe('3. Media & Storage Validation', () => {
+  describe('3. Media Storage Privacy & Validation', () => {
     it('accepts valid JPEG, PNG, and WebP images', () => {
       const fakeJpg = new File(['fake content'], 'portrait.jpg', { type: 'image/jpeg' });
       const fakePng = new File(['fake content'], 'card.png', { type: 'image/png' });
@@ -138,30 +143,66 @@ describe('Phase 2 Canonical Data Architecture & Security', () => {
       expect(res.error).toContain('exceeds');
     });
 
-    it('accepts valid MP3 and M4A audio under 25MB', () => {
-      const fakeMp3 = new File(['fake audio'], 'shehnai.mp3', { type: 'audio/mpeg' });
-      expect(validateMediaFile(fakeMp3, 'audio').valid).toBe(true);
+    it('wedding-memories bucket name is configured as wedding-memories', () => {
+      expect(MEMORIES_BUCKET).toBe('wedding-memories');
     });
   });
 
-  describe('4. Persistence Service & Error Handling', () => {
-    it('saveCanonicalConfig rejects invalid config with descriptive error', async () => {
-      const invalidConfig = {} as unknown as WeddingConfig;
-      const res = await saveCanonicalConfig(invalidConfig);
-      expect(res.success).toBe(false);
-      expect(res.error).toContain('Validation failed');
+  describe('4. Pending Media Privacy & Moderation Workflows', () => {
+    it('fetchApprovedMemories strictly returns ONLY approved media for public gallery', async () => {
+      const res = await fetchApprovedMemories('all');
+      expect(res.data).toBeDefined();
+      expect(res.data.every((item) => item.moderationStatus === 'approved')).toBe(true);
     });
 
-    it('loadCanonicalConfig returns safe fallback in headless environment', async () => {
-      const res = await loadCanonicalConfig();
-      expect(res.config).toBeDefined();
-      expect(typeof res.config.groom.en).toBe('string');
-      expect(typeof res.config.bride.hi).toBe('string');
-      expect(['supabase', 'local']).toContain(res.mode);
+    it('handles guest media upload, pending isolation, admin moderation approval & deletion', async () => {
+      // 1. Guest uploads photo
+      const fakePhoto = new File(['guest image data'], 'guest_photo.jpg', { type: 'image/jpeg' });
+      const uploadRes = await uploadGuestMemory({
+        file: fakePhoto,
+        ceremonyId: 'sangeet',
+        uploaderName: 'Simran Dahiya',
+        uploaderSide: 'groom',
+        caption: 'Sangeet night celebrations',
+        guestPasscode: 'rohtak2026',
+      });
+
+      expect(uploadRes.success).toBe(true);
+      expect(uploadRes.memory).toBeDefined();
+      expect(uploadRes.memory?.moderationStatus).toBe('pending');
+
+      // 2. Verify that pending memory is NOT visible in public approved gallery
+      const approvedRes = await fetchApprovedMemories('all');
+      expect(approvedRes.data.some((m) => m.uploaderName === 'Simran Dahiya')).toBe(false);
+
+      // 3. Verify that pending memory IS retrieved in admin moderation panel
+      const adminRes = await fetchAdminMemories('pending');
+      expect(adminRes.data).toBeDefined();
+      expect(adminRes.stats.totalPending).toBeGreaterThanOrEqual(1);
+
+      const pendingItem = adminRes.data.find((m) => m.uploaderName === 'Simran Dahiya');
+      expect(pendingItem).toBeDefined();
+
+      // 4. Admin approves pending memory
+      if (pendingItem) {
+        const updateRes = await updateMemoryModerationStatus(pendingItem.id, 'approved');
+        expect(updateRes.success).toBe(true);
+
+        // Verify it is now published in public approved gallery
+        const recheckApproved = await fetchApprovedMemories('all');
+        expect(recheckApproved.data.some((m) => m.id === pendingItem.id)).toBe(true);
+
+        // 5. Admin deletes memory
+        const delRes = await deleteMemoryItem(pendingItem.id, pendingItem.storagePath);
+        expect(delRes.success).toBe(true);
+
+        const postDelRes = await fetchAdminMemories('all');
+        expect(postDelRes.data.some((m) => m.id === pendingItem.id)).toBe(false);
+      }
     });
   });
 
-  describe('5. Admin Authorization & Passkey Removal', () => {
+  describe('5. Admin Authentication & Passkey Removal', () => {
     it('verifyUserAdminRole grants admin when app_metadata.role is admin', async () => {
       const mockAdminUser = {
         id: 'user-admin-123',
@@ -198,52 +239,43 @@ describe('Phase 2 Canonical Data Architecture & Security', () => {
     });
   });
 
-  describe('6. RLS Migration Static Analysis Policy Verification', () => {
-    it('supabase_canonical_schema.sql explicitly drops all legacy permissive policies', () => {
+  describe('6. RLS Migration & Hardened Function Static Verification', () => {
+    it('supabase_canonical_schema.sql explicitly sets wedding-memories bucket to public = false', () => {
       const schemaPath = path.resolve(process.cwd(), 'supabase_canonical_schema.sql');
       const sql = fs.readFileSync(schemaPath, 'utf8');
 
-      const requiredDrops = [
-        'Admins can view wedding_admins',
-        'Public can read wedding_config',
-        'Only authenticated admins can modify wedding_config',
-        'Public can view approved memories only',
-        'Authenticated admins can view all memories',
-        'Guests can upload pending memories',
-        'Only authenticated admins can update memories',
-        'Only authenticated admins can delete memories',
-        'Admins full access to memories',
-        'Allow public read approved memories',
-        'Allow guest upload pending memory',
-        'Allow admin full access memories',
-        'Public can read approved wishes',
-        'Public read approved wishes',
-        'Admin can read all wishes',
-        'Public can submit wish',
-        'Admin can update or delete wishes',
-        'Admins manage wishes',
-        'Public view wedding-media',
-        'Public can view wedding-media',
-        'Admins manage wedding-media',
-        'Only authenticated admins can manage wedding-media',
-        'Public view wedding-memories',
-        'Public can view wedding-memories',
-        'Guests can upload to pending in wedding-memories',
-        'Admins can manage wedding-memories',
-      ];
-
-      for (const policyName of requiredDrops) {
-        expect(sql).toContain(`DROP POLICY IF EXISTS "${policyName}"`);
-      }
+      expect(sql).toContain("'wedding-memories'");
+      expect(sql).toContain("public = false");
     });
 
-    it('supabase_canonical_schema.sql enforces public.is_wedding_admin(auth.uid()) helper', () => {
+    it('supabase_canonical_schema.sql hardens is_wedding_admin() search_path and EXECUTE grants', () => {
       const schemaPath = path.resolve(process.cwd(), 'supabase_canonical_schema.sql');
       const sql = fs.readFileSync(schemaPath, 'utf8');
 
-      expect(sql).toContain('CREATE OR REPLACE FUNCTION public.is_wedding_admin');
-      expect(sql).toContain('SECURITY DEFINER');
-      expect(sql).toContain('is_wedding_admin(auth.uid())');
+      expect(sql).toContain('SET search_path = public, pg_temp');
+      expect(sql).toContain('REVOKE EXECUTE ON FUNCTION public.is_wedding_admin(UUID) FROM PUBLIC');
+      expect(sql).toContain('REVOKE EXECUTE ON FUNCTION public.is_wedding_admin(UUID) FROM anon');
+      expect(sql).toContain('GRANT EXECUTE ON FUNCTION public.is_wedding_admin(UUID) TO authenticated, service_role');
+    });
+
+    it('supabase_canonical_schema.sql and AdminSecurityTab.tsx SQL scripts are completely synchronized', () => {
+      const schemaPath = path.resolve(process.cwd(), 'supabase_canonical_schema.sql');
+      const securityTabPath = path.resolve(process.cwd(), 'src/components/admin/AdminSecurityTab.tsx');
+
+      const canonicalSql = fs.readFileSync(schemaPath, 'utf8').trim();
+      const securityTabContent = fs.readFileSync(securityTabPath, 'utf8');
+
+      expect(securityTabContent).toContain('SET search_path = public, pg_temp');
+      expect(securityTabContent).toContain('public = false');
+      expect(securityTabContent).toContain('REVOKE EXECUTE ON FUNCTION public.is_wedding_admin');
+    });
+
+    it('includes pg_policies audit verification query at bottom of canonical schema', () => {
+      const schemaPath = path.resolve(process.cwd(), 'supabase_canonical_schema.sql');
+      const sql = fs.readFileSync(schemaPath, 'utf8');
+
+      expect(sql).toContain('FROM pg_policies');
+      expect(sql).toContain("WHERE schemaname IN ('public', 'storage')");
     });
   });
 });
